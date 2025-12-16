@@ -45,8 +45,11 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
     public static final String INVALID_XML_ERROR_MSG = "Invalid XML: ";
     public static final String MISSING_PROP_ERROR_MSG = "Missing property: ";
 
-    protected final XMLStreamReader xmlReader;
-    protected final XMLStreamWriter xmlWriter;
+//    protected final XMLStreamReader xmlReader;
+//    protected final XMLStreamWriter xmlWriter;
+
+    protected final CotDataReader xmlReader;
+    protected final CotDataWriter xmlWriter;
 
     protected boolean isCollection;
 
@@ -63,14 +66,14 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
             {
                 var factory = XMLImplFinder.getStaxInputFactory();
                 var is = new BufferedInputStream(ctx.getInputStream());
-                xmlReader = factory.createXMLStreamReader(is, StandardCharsets.UTF_8.name());
+                xmlReader = (CotDataReader) factory.createXMLStreamReader(is, StandardCharsets.UTF_8.name());
                 xmlWriter = null;
             }
             else
             {
                 var factory = XMLImplFinder.getStaxOutputFactory();
                 var os = ctx.getOutputStream();//new BufferedOutputStream(ctx.getOutputStream());
-                xmlWriter = factory.createXMLStreamWriter(os, StandardCharsets.UTF_8.name());
+                xmlWriter = (CotDataWriter) factory.createXMLStreamWriter(os, StandardCharsets.UTF_8.name());
                 xmlReader = null;
             }
         }
@@ -80,8 +83,8 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
         }
     }
 
-    public abstract V deserialize(XMLStreamReader xmlReader) throws IOException;
-    public abstract void serialize(K key, V res, boolean showLinks, XMLStreamWriter xmlWriter) throws IOException;
+    public abstract V deserialize(CotDataReader xmlReader) throws IOException;
+    public abstract void serialize(K key, V res, boolean showLinks, CotDataWriter xmlWriter) throws IOException, XMLStreamException;
 
 
     protected CotDataReader getCotReader(InputStream is) throws IOException
