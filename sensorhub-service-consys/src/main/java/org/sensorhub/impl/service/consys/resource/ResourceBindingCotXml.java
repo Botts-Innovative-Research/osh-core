@@ -118,7 +118,7 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
     }
 
     @Override
-    public void serialize(K key, V res, boolean showLinks) throws IOException {
+    public void serialize(K key, V res, boolean showLinks) throws IOException, XMLStreamException {
         serialize(key, res, showLinks, this.xmlWriter);
     }
 

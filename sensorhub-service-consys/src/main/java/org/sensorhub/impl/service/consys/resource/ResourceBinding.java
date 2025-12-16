@@ -50,9 +50,9 @@ public abstract class ResourceBinding<K, V>
     
     
     public abstract V deserialize() throws IOException;
-    public abstract void serialize(K key, V res, boolean showLinks) throws IOException;
+    public abstract void serialize(K key, V res, boolean showLinks) throws IOException, XMLStreamException;
     public abstract void startCollection() throws IOException, XMLStreamException;
-    public abstract void endCollection(Collection<ResourceLink> links) throws IOException;
+    public abstract void endCollection(Collection<ResourceLink> links) throws IOException, XMLStreamException;
     
     
     protected String getAbsoluteHref(String href)

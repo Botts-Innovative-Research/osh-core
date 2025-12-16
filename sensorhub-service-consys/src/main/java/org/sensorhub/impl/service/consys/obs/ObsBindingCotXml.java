@@ -121,7 +121,7 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
         String vers = "2.0";
 
-        dataRec = (DataRecord) fac.createRecord() // come back to this casting............
+        dataRec = (DataRecord) fac.createRecord()
                 .label("<event>")
                 .addField("version", fac.createCoTVersion())
                 .addField("type", fac.createType())
@@ -170,7 +170,7 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
                         }
                     } else if ("result".equals(propName)) {
                         var result = xmlReader.next();
-                        obs.withResult((DataBlock) dataRec); // what is this
+                        obs.withResult((DataBlock) dataRec);
                     }
                 }
 
@@ -301,7 +301,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
         // if we're reading, just skip to the items array
         // calls to deserialize() will take it from there
-        //xmlReader.beginObject(); // idk what to replace this with.........
         while (xmlReader.hasNext()) {
             var propName = xmlReader.getLocalName();
             if (propName.equals(getItemsPropertyName()))
@@ -313,8 +312,8 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
 
     @Override
-    public void endCollection(Collection<ResourceLink> links) throws IOException
-    {
-        xmlReader.isEndElement(); // reader... or writer...??
+    public void endCollection(Collection<ResourceLink> links) throws IOException, XMLStreamException {
+        xmlWriter.close();
+        xmlWriter.flush();
     }
 }
