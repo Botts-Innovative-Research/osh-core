@@ -173,7 +173,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
                         obs.withResult((DataBlock) dataRec);
                     }
                 }
-
             }
         }
         catch (DateTimeParseException e)

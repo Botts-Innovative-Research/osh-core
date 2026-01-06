@@ -54,6 +54,8 @@ import org.vast.util.Asserts;
 import com.google.common.base.Objects;
 import net.opengis.swe.v20.BinaryEncoding;
 
+import javax.xml.stream.XMLStreamException;
+
 
 public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, IObsStore>
 {
@@ -89,8 +91,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
     
     
     @Override
-    protected ResourceBinding<BigId, IObsData> getBinding(RequestContext ctx, boolean forReading) throws IOException
-    {
+    protected ResourceBinding<BigId, IObsData> getBinding(RequestContext ctx, boolean forReading) throws IOException, XMLStreamException {
         var contextData = new ObsHandlerContextData();
         ctx.setData(contextData);
         
@@ -144,9 +145,13 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                 format = ResourceFormat.JSON;
             ctx.setFormat(format);
         }
-        
+
         if (format.isOneOf(ResourceFormat.JSON, ResourceFormat.OM_JSON))
             return new ObsBindingOmJson(ctx, idEncoders, forReading, dataStore);
+        else if (format.equals(ResourceFormat.GEO_JSON))
+            return new ObsBindingGeoJson(ctx, idEncoders, forReading, dataStore);
+        else if (format.equals(ResourceFormat.COT_XML))
+            return new ObsBindingCotXml(ctx, idEncoders, forReading, dataStore);
         else
             return new ObsBindingSweCommon(ctx, idEncoders, forReading, dataStore);
     }
@@ -253,7 +258,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                 else
                     startReplayStream(ctx, dsID, filter, replaySpeed, binding);
             }
-            catch (IOException e)
+            catch (IOException | XMLStreamException e)
             {
                 throw new IllegalStateException("Error initializing binding", e);
             }
@@ -329,6 +334,8 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                 {
                     subscription.cancel();
                     throw new CallbackException(e);
+                } catch (XMLStreamException e) {
+                    throw new RuntimeException(e);
                 }
             }
 
@@ -435,7 +442,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                     ctx.getLogger().debug("Ending obs replay stream #{}", System.identityHashCode(streamHandler));
             }
             }
-            catch (IOException e)
+            catch (IOException | XMLStreamException e)
             {
                 throw new CompletionException(e);
             }
