@@ -35,7 +35,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-
 /**
  * <p>
  * New implementation of XML data writer with better efficiency since the 
@@ -46,11 +45,14 @@ import java.util.Objects;
  * @author Ashley Poteau
  * @since Dec 2, 2025
  */
+
 // xmlstreamreader
-public class CotDataReader implements XMLStreamReader {
+// or xmldataparser?
+public class CotDataReader extends XmlDataParser {
     static final String COT_ERROR = "Error writing XML stream for ";
     private final Reader in;
 
+    protected XMLStreamReader xmlReader;
     protected XMLStreamWriter xmlWriter;
     protected String namespace;
     protected String prefix;
@@ -67,229 +69,6 @@ public class CotDataReader implements XMLStreamReader {
     public CotDataReader(Reader in) {
         this.in = Objects.requireNonNull(in, "in == null");
     }
-    
-    @Override
-    public Object getProperty(String s) throws IllegalArgumentException {
-        return null;
-    }
 
-    @Override
-    public int next() throws XMLStreamException {
-        return 0;
-    }
 
-    @Override
-    public void require(int i, String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public String getElementText() throws XMLStreamException {
-        return "";
-    }
-
-    @Override
-    public int nextTag() throws XMLStreamException {
-        return 0;
-    }
-
-    @Override
-    public boolean hasNext() throws XMLStreamException {
-        return false;
-    }
-
-    @Override
-    public void close() throws XMLStreamException {
-
-    }
-
-    @Override
-    public String getNamespaceURI(String s) {
-        return "";
-    }
-
-    @Override
-    public boolean isStartElement() {
-        return false;
-    }
-
-    @Override
-    public boolean isEndElement() {
-        return false;
-    }
-
-    @Override
-    public boolean isCharacters() {
-        return false;
-    }
-
-    @Override
-    public boolean isWhiteSpace() {
-        return false;
-    }
-
-    @Override
-    public String getAttributeValue(String s, String s1) {
-        return "";
-    }
-
-    @Override
-    public int getAttributeCount() {
-        return 0;
-    }
-
-    @Override
-    public QName getAttributeName(int i) {
-        return null;
-    }
-
-    @Override
-    public String getAttributeNamespace(int i) {
-        return "";
-    }
-
-    @Override
-    public String getAttributeLocalName(int i) {
-        return "";
-    }
-
-    @Override
-    public String getAttributePrefix(int i) {
-        return "";
-    }
-
-    @Override
-    public String getAttributeType(int i) {
-        return "";
-    }
-
-    @Override
-    public String getAttributeValue(int i) {
-        return "";
-    }
-
-    @Override
-    public boolean isAttributeSpecified(int i) {
-        return false;
-    }
-
-    @Override
-    public int getNamespaceCount() {
-        return 0;
-    }
-
-    @Override
-    public String getNamespacePrefix(int i) {
-        return "";
-    }
-
-    @Override
-    public String getNamespaceURI(int i) {
-        return "";
-    }
-
-    @Override
-    public NamespaceContext getNamespaceContext() {
-        return null;
-    }
-
-    @Override
-    public int getEventType() {
-        return 0;
-    }
-
-    @Override
-    public String getText() {
-        return "";
-    }
-
-    @Override
-    public char[] getTextCharacters() {
-        return new char[0];
-    }
-
-    @Override
-    public int getTextCharacters(int i, char[] chars, int i1, int i2) throws XMLStreamException {
-        return 0;
-    }
-
-    @Override
-    public int getTextStart() {
-        return 0;
-    }
-
-    @Override
-    public int getTextLength() {
-        return 0;
-    }
-
-    @Override
-    public String getEncoding() {
-        return "";
-    }
-
-    @Override
-    public boolean hasText() {
-        return false;
-    }
-
-    @Override
-    public Location getLocation() {
-        return null;
-    }
-
-    @Override
-    public QName getName() {
-        return null;
-    }
-
-    @Override
-    public String getLocalName() {
-        return "";
-    }
-
-    @Override
-    public boolean hasName() {
-        return false;
-    }
-
-    @Override
-    public String getNamespaceURI() {
-        return "";
-    }
-
-    @Override
-    public String getPrefix() {
-        return "";
-    }
-
-    @Override
-    public String getVersion() {
-        return "";
-    }
-
-    @Override
-    public boolean isStandalone() {
-        return false;
-    }
-
-    @Override
-    public boolean standaloneSet() {
-        return false;
-    }
-
-    @Override
-    public String getCharacterEncodingScheme() {
-        return "";
-    }
-
-    @Override
-    public String getPITarget() {
-        return "";
-    }
-
-    @Override
-    public String getPIData() {
-        return "";
-    }
 }

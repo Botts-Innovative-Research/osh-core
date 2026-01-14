@@ -26,6 +26,7 @@ import javax.xml.stream.XMLStreamReader;
 import javax.xml.stream.XMLStreamWriter;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.Set;
 
 
@@ -48,8 +49,8 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
 //    protected final XMLStreamReader xmlReader;
 //    protected final XMLStreamWriter xmlWriter;
 
-    protected final CotDataReader xmlReader;
-    protected final CotDataWriter xmlWriter;
+    protected final CotDataReader cotReader;
+    protected final CotDataWriter cotWriter;
 
     protected boolean isCollection;
 
@@ -59,27 +60,25 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
     protected ResourceBindingCotXml(RequestContext ctx, IdEncoders idEncoders, boolean forReading) throws IOException
     {
         super(ctx, idEncoders);
-        
+
         try
         {
             if (forReading)
             {
-                var factory = XMLImplFinder.getStaxInputFactory();
                 var is = new BufferedInputStream(ctx.getInputStream());
-                xmlReader = (CotDataReader) factory.createXMLStreamReader(is, StandardCharsets.UTF_8.name());
-                xmlWriter = null;
+                cotReader = getCotReader(is);
+                cotWriter = null;
             }
             else
             {
-                var factory = XMLImplFinder.getStaxOutputFactory();
-                var os = ctx.getOutputStream();//new BufferedOutputStream(ctx.getOutputStream());
-                xmlWriter = (CotDataWriter) factory.createXMLStreamWriter(os, StandardCharsets.UTF_8.name());
-                xmlReader = null;
+                var os = ctx.getOutputStream();
+                cotWriter = getCotWriter(os);
+                cotReader = null;
             }
         }
-        catch (XMLStreamException e)
+        catch (Exception e)
         {
-            throw new IOException("Error initializing XML bindings", e);
+            throw new IOException("Error initializing COT XML bindings", e);
         }
     }
 
@@ -93,44 +92,43 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
         return new CotDataReader(osr);
     }
 
-    protected CotDataWriter getCotWriter(OutputStream os, PropertyFilter propFilter) throws IOException
+    protected CotDataWriter getCotWriter(OutputStream os) throws IOException
     {
-        CotDataWriter writer = new CotDataWriter();
-        var osw = new OutputStreamWriter(os, StandardCharsets.UTF_8);
-        if (propFilter != null) {
-            this.excludedProps = propFilter.getExcludedProps();
-            this.includedProps = propFilter.getIncludedProps();
+        try {
+            CotDataWriter writer = new CotDataWriter();
+            writer.setOutput(os);
+            return writer;
+        } catch (Exception e) {
+            throw new IOException("Error creating COT writer", e);
         }
-//        else
-//            writer = new JsonInliningWriter(osw);
-
-        writer.setStrictness(Strictness.LENIENT);
-        writer.setSerializeNulls(false);
-        writer.setIndent(INDENT);
-        return writer;
     }
 
 
     @Override
     public V deserialize() throws IOException
     {
-        return deserialize(this.xmlReader);
+        return deserialize(this.cotReader);
     }
 
     @Override
     public void serialize(K key, V res, boolean showLinks) throws IOException, XMLStreamException {
-        serialize(key, res, showLinks, this.xmlWriter);
+        serialize(key, res, showLinks, this.cotWriter);
     }
 
     @Override
     public void startCollection() throws IOException, XMLStreamException {
         isCollection = true;
-        startXMLCollection(xmlWriter);
+        if (cotWriter != null) {
+            cotWriter.startStream(true);
+        }
     }
 
-    protected void startXMLCollection(XMLStreamWriter xmlWriter) throws XMLStreamException {
-        xmlWriter.writeStartElement(getItemsPropertyName());
-        // xmlWriter.beginArray();
+    @Override
+    public void endCollection(Collection<ResourceLink> links) throws IOException, XMLStreamException {
+        if (cotWriter != null) {
+            cotWriter.endStream();
+            cotWriter.flush();
+        }
     }
 
     protected String getItemsPropertyName()

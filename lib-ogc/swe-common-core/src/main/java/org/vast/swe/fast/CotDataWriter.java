@@ -48,7 +48,8 @@ import java.util.Set;
  * @since Oct 31, 2025
  */
 // xmlstreamwriter
-public class CotDataWriter implements XMLStreamWriter {
+// xmldatawriter?
+public class CotDataWriter extends XmlDataWriter {
     static final String COT_ERROR = "Error writing XML stream for ";
     
     protected XMLStreamWriter xmlWriter;
@@ -63,6 +64,32 @@ public class CotDataWriter implements XMLStreamWriter {
     private String formattedColon;
     private String formattedComma;
     private boolean usesEmptyNewlineAndIndent;
+
+
+    public void writeStartElement(String namespaceURI, String localName) throws XMLStreamException {
+        xmlWriter.writeStartElement(namespaceURI, localName);
+    }
+
+    public void writeCotCharacters(String text) throws XMLStreamException {
+        if (xmlWriter == null) {
+            throw new IllegalStateException("XMLStreamWriter not initialized. Call setOutput() first.");
+        }
+        xmlWriter.writeCharacters(text);
+    }
+
+    public void writeCotStartElement(String text) throws XMLStreamException {
+        if (xmlWriter == null) {
+            throw new IllegalStateException("XMLStreamWriter not initialized. Call setOutput() first.");
+        }
+        xmlWriter.writeStartElement(text);
+    }
+
+    public void writeCotAttribute(String var1, String var2) throws XMLStreamException {
+        if (xmlWriter == null) {
+            throw new IllegalStateException("XMLStreamWriter not initialized. Call setOutput() first.");
+        }
+        xmlWriter.writeAttribute(var1, var2);
+    }
 
     public final void setStrictness(Strictness strictness) {
         this.strictness = Objects.requireNonNull(strictness);
@@ -104,172 +131,13 @@ public class CotDataWriter implements XMLStreamWriter {
                 this.formattingStyle.getNewline().isEmpty() && this.formattingStyle.getIndent().isEmpty();
     }
 
+
     public final void setIndent(String indent) {
         if (indent.isEmpty()) {
             setFormattingStyle(FormattingStyle.COMPACT);
         } else {
             setFormattingStyle(FormattingStyle.PRETTY.withIndent(indent));
         }
-    }
-
-    @Override
-    public void writeStartElement(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeStartElement(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeStartElement(String s, String s1, String s2) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEmptyElement(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEmptyElement(String s, String s1, String s2) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEmptyElement(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEndElement() throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEndDocument() throws XMLStreamException {
-
-    }
-
-    @Override
-    public void close() throws XMLStreamException {
-
-    }
-
-    @Override
-    public void flush() throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeAttribute(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeAttribute(String s, String s1, String s2, String s3) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeAttribute(String s, String s1, String s2) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeNamespace(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeDefaultNamespace(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeComment(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeProcessingInstruction(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeProcessingInstruction(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeCData(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeDTD(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeEntityRef(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeStartDocument() throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeStartDocument(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeStartDocument(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeCharacters(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void writeCharacters(char[] chars, int i, int i1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public String getPrefix(String s) throws XMLStreamException {
-        return "";
-    }
-
-    @Override
-    public void setPrefix(String s, String s1) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void setDefaultNamespace(String s) throws XMLStreamException {
-
-    }
-
-    @Override
-    public void setNamespaceContext(NamespaceContext namespaceContext) throws XMLStreamException {
-
-    }
-
-    @Override
-    public NamespaceContext getNamespaceContext() {
-        return null;
-    }
-
-    @Override
-    public Object getProperty(String s) throws IllegalArgumentException {
-        return null;
     }
 
 }

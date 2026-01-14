@@ -322,7 +322,7 @@ public class XmlDataWriter extends AbstractDataWriter
     }
     
     
-    protected void writeStartElement(String eltName) throws XMLStreamException
+    public void writeStartElement(String eltName) throws XMLStreamException
     {
         if (namespace != null)
         {
