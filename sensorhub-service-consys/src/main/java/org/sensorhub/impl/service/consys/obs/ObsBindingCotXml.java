@@ -69,7 +69,7 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
     IObsStore obsStore;
     XmlDataParser resultReader;
     CotDataReader cotReader; // unused...
-    CotDataWriter cotWriter;
+    CotDataWriter cotWriter = new CotDataWriter();
     Map<BigId, AbstractDataWriter> resultWriters;
     DOMHelper dom;
     ScalarIndexer timeStampIndexer;
@@ -227,11 +227,11 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
         var obsId = idEncoders.getObsIdEncoder().encodeID(key);
 
-        xmlWriter.setOutput(os);
+        cotWriter.setOutput(os);
 
-        xmlWriter.writeStartElement("event");
-        xmlWriter.writeCotAttribute("version", "2.0");
-        xmlWriter.writeCotAttribute("uid", obsId);
+        cotWriter.writeStartElement("event");
+        cotWriter.writeCotAttribute("version", "2.0");
+        cotWriter.writeCotAttribute("uid", obsId);
 
         double longitude = 0;
         double latitude = 0;
