@@ -15,6 +15,7 @@ Copyright (C) 2020 Sensia Software LLC. All Rights Reserved.
 package org.sensorhub.ui.table;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.sensorhub.api.common.BigId;
 import org.sensorhub.api.common.IdEncoder;
@@ -31,18 +32,22 @@ public class LazyLoadingObsContainer extends IndexedContainer
     final IObsSystemDatabase db;
     final IdEncoder foiIdEncoder;
     final BigId dataStreamID;
+    final Set<BigId> foiIDs;
     final List<ScalarIndexer> indexers;
+    final int pageSize;
     int startIndexCache = -1;
     int size = -1;
     TimeExtent timeRange;
+        
     
-    
-    public LazyLoadingObsContainer(IObsSystemDatabase db, IdEncoder foiIdEncoder, BigId dataStreamID, List<ScalarIndexer> indexers)
+    public LazyLoadingObsContainer(IObsSystemDatabase db, IdEncoder foiIdEncoder, BigId dataStreamID, Set<BigId> foiIDs, List<ScalarIndexer> indexers, int pageSize)
     {
         this.db = db;
         this.foiIdEncoder = foiIdEncoder;
         this.dataStreamID = dataStreamID;
+        this.foiIDs = foiIDs;
         this.indexers = indexers;
+        this.pageSize = pageSize;
     }
     
     
@@ -57,7 +62,6 @@ public class LazyLoadingObsContainer extends IndexedContainer
     public void onPageChanged()
     {
         this.startIndexCache = -1;
-        removeAllItems();
     }
     
         
@@ -69,15 +73,20 @@ public class LazyLoadingObsContainer extends IndexedContainer
             startIndexCache = startIndex;
             //System.out.println("Loading from " + startIndex + ", count=" + numberOfIds);
             
+            var filter = new ObsFilter.Builder()
+                .withDataStreams(dataStreamID)
+                .withPhenomenonTime().fromTimeExtent(timeRange).done();
+            if (!foiIDs.isEmpty())
+                filter.withFois(foiIDs);
+            
             // prefetch range from DB
+            removeAllItems();
             AtomicInteger count = new AtomicInteger(startIndex);
-            db.getObservationStore().select(new ObsFilter.Builder()
-                    .withDataStreams(dataStreamID)
-                    .withPhenomenonTime().fromTimeExtent(timeRange).done()
-                    .withLimit((long)startIndex+numberOfIds)
-                    .build())
+            db.getObservationStore().select(filter.build())
                 .skip(startIndex)
+                .limit(10)
                 .forEach(obs -> {
+                    //System.out.println(obs.getResultTime());
                     var dataBlk = obs.getResult();
                     Item item = addItem(count.getAndIncrement());
                     if (item != null)
@@ -110,10 +119,13 @@ public class LazyLoadingObsContainer extends IndexedContainer
         
         if (size < 0)
         {
-            size = (int)db.getObservationStore().countMatchingEntries(new ObsFilter.Builder()
+            var filter = new ObsFilter.Builder()
                 .withDataStreams(dataStreamID)
-                .withPhenomenonTime().fromTimeExtent(timeRange).done()
-                .build());
+                .withPhenomenonTime().fromTimeExtent(timeRange).done();
+            if (!foiIDs.isEmpty())
+                filter.withFois(foiIDs);
+            
+            size = (int)db.getObservationStore().countMatchingEntries(filter.build());
         }
         
         return size;

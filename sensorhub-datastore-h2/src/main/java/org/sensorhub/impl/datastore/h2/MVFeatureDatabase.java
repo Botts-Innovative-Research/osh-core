@@ -64,6 +64,7 @@ public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> i
                 builder.compress();
             
             mvStore = builder.open();
+            mvStore.setAutoCommitDelay(config.autoCommitPeriod*1000);
             mvStore.setVersionsToKeep(0);
             
             // open feature store
@@ -100,6 +101,9 @@ public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> i
     {
         if (mvStore != null) 
         {
+            // must call commit first to make sure kryo persistent class resolver
+            // is updated before we serialize it again in close
+            mvStore.commit();
             mvStore.close();
             mvStore = null;
         }
@@ -130,22 +134,20 @@ public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> i
     
     
     @Override
-    public <T> T executeTransaction(Callable<T> transaction) throws Exception
+    public synchronized <T> T executeTransaction(Callable<T> transaction) throws Exception
     {
         checkStarted();
-        synchronized (mvStore)
+        
+        // store current version so we can rollback if an error occurs
+        long currentVersion = mvStore.commit();
+        try
         {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                return transaction.call();
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
+            return transaction.call();
+        }
+        catch (Exception e)
+        {
+            mvStore.rollbackTo(currentVersion);
+            throw e;
         }
     }
 

@@ -27,6 +27,45 @@ You can also go to this [Demo Page](http://opensensorhub.github.io/osh-js/latest
 
 This other [Technical Page](http://sensiasoft.net:8181/demo.html) contains example SWE service calls for you to see the standard compliant XML and data that OSH generates.
 
+If using a build system, binaries for osh-core are stored in GitHub Packages. Use the following repository setup to resolve dependencies:
+
+### Gradle
+
+```groovy
+//build.gradle
+repositories {
+  maven {
+    url = uri("https://maven.pkg.github.com/opensensorhub/osh-core")
+    credentials {
+      username = System.getenv("GITHUB_ACTOR")
+      password = System.getenv("GITHUB_TOKEN")
+    }
+  }
+}
+  ```
+### Maven
+```xml
+<!--pom.xml-->
+<repositories>
+    <repository>
+        <id>osh-core</id>
+        <name>osh-core</name>
+        <url>https://maven.pkg.github.com/opensensorhub/osh-core</url>
+    </repository>
+</repositories>
+```
+```xml
+<!--~/.m2/settings.xml-->
+<servers>
+    <server>
+        <id>osh-core</id>
+        <username>${env.GITHUB_ACTOR}</username>
+        <password>${env.GITHUB_TOKEN}</password>
+    </server>
+</servers>
+```
+Where environment variables `GITHUB_ACTOR` and `GITHUB_TOKEN` are your GitHub username and PAT respectively.<br>
+[Instructions on how to generate PATs](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
 
 ## Building
 
@@ -35,7 +74,9 @@ OpenSensorHub can be built using Gradle, either from the command line or within 
 
 ## Contributing
 
-Refer to the [Developer's Guide](http://docs.opensensorhub.org/dev/dev-guide/#building-with-eclipse) for instructions on how to setup your development environment in Eclipse.
+Refer to the [Developer's Guide](https://docs.opensensorhub.org/dev/dev-guide) for instructions on how to setup your development environment.
+
+The Developer's guide includes information on how to build with Eclipse or Gradle.
 
 You can also find useful information in the [Javadocs](http://docs.opensensorhub.org/dev/javadoc/) and Design Documentation on the [Wiki](../../wiki/Home). 
 

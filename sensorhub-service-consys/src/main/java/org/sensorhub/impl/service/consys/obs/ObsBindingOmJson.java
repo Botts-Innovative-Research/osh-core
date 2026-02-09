@@ -245,7 +245,10 @@ public class ObsBindingOmJson extends ResourceBindingJson<BigId, IObsData>
     @Override
     public void startCollection() throws IOException
     {
-        startJsonCollection(writer);
+        if (reader != null)
+            startJsonCollection(reader);
+        else
+            startJsonCollection(writer);
     }
 
 

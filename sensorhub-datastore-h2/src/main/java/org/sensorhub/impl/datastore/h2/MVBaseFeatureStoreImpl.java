@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Instant;
+import java.util.AbstractMap.SimpleEntry;
 import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Iterator;
@@ -26,9 +27,10 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import org.h2.mvstore.DataUtils;
+import org.h2.mvstore.DecisionMakerWithError;
 import org.h2.mvstore.MVBTreeMap;
 import org.h2.mvstore.MVMap;
+import org.h2.mvstore.MVMap.Decision;
 import org.h2.mvstore.MVStore;
 import org.h2.mvstore.RangeCursor;
 import org.h2.mvstore.rtree.SpatialKey;
@@ -590,7 +592,7 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
         // more recent version of the feature description available
         resultStream = resultStream.map(e -> {
             var wf = getFeatureWithAdjustedValidTime((MVFeatureParentKey)e.getKey(), e.getValue());
-            return new DataUtils.MapEntry<>(e.getKey(), wf);
+            return new SimpleEntry<>(e.getKey(), wf);
         });
         
         // apply post filter on time now that we computed the correct valid time period
@@ -663,24 +665,10 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
     @Override
     public synchronized void clear()
     {
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
-        {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                idsIndex.clear();
-                spatialIndex.clear();
-                featuresIndex.clear();
-                fullTextIndex.clear();
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
-        }
+        idsIndex.clear();
+        spatialIndex.clear();
+        featuresIndex.clear();
+        fullTextIndex.clear();
     }
 
 
@@ -741,7 +729,7 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
 
 
     @Override
-    public V put(FeatureKey key, V feature)
+    public synchronized V put(FeatureKey key, V feature)
     {
         try
         {
@@ -772,54 +760,54 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
     
     protected V put(MVFeatureParentKey fk, V f, boolean isNewFeature, boolean replaceVersion) throws DataStoreException
     {
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
+        // add to main index, conditionally
+        var decisionMaker = new DecisionMakerWithError<V>() {
+            @Override
+            public Decision decide(V existingValue, V providedValue)
+            {
+                if (existingValue != null)
+                {
+                    if (!replaceVersion) {
+                        this.error = new DataStoreException(DataStoreUtils.ERROR_EXISTING_FEATURE_VERSION);
+                        return Decision.ABORT;
+                    }
+                
+                    if (!existingValue.getUniqueIdentifier().equals(f.getUniqueIdentifier())) {
+                        this.error = new DataStoreException(DataStoreUtils.ERROR_CHANGED_FEATURE_UID);
+                        return Decision.ABORT;
+                    }
+                }
+                
+                return Decision.PUT;
+            }
+        };
+        
+        V oldValue = featuresIndex.operate(fk, f, decisionMaker);
+        boolean isNewEntry = (oldValue == null);
+        if (decisionMaker.getError() != null) {
+            throw decisionMaker.getError();
+        }       
+        
+        // update ID and UID indexes
+        if (isNewFeature)
         {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                // add to main index
-                V oldValue = featuresIndex.put(fk, f);
-                
-                // check if we're allowed to replace existing entry
-                boolean isNewEntry = (oldValue == null);
-                if (!isNewEntry)
-                {
-                    if (!replaceVersion)
-                        throw new DataStoreException(DataStoreUtils.ERROR_EXISTING_FEATURE_VERSION);
-                    
-                    if (!oldValue.getUniqueIdentifier().equals(f.getUniqueIdentifier()))
-                        throw new DataStoreException(DataStoreUtils.ERROR_CHANGED_FEATURE_UID);
-                }
-                
-                // update ID and UID indexes
-                if (isNewFeature)
-                {
-                    idsIndex.put(fk, Boolean.TRUE);
-                    uidsIndex.put(f.getUniqueIdentifier(), fk);
-                }
-                
-                // update spatial index
-                if (isNewEntry)
-                    spatialIndex.add(fk, f);
-                else
-                    spatialIndex.update(fk, oldValue, f);
-                
-                // update full-text index
-                if (isNewEntry)
-                    fullTextIndex.add(fk, f);
-                else
-                    fullTextIndex.update(fk, oldValue, f);
-                
-                return oldValue;
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
+            idsIndex.put(fk, Boolean.TRUE);
+            uidsIndex.put(f.getUniqueIdentifier(), fk);
         }
+        
+        // update spatial index
+        if (isNewEntry)
+            spatialIndex.add(fk, f);
+        else
+            spatialIndex.update(fk, oldValue, f);
+        
+        // update full-text index
+        if (isNewEntry)
+            fullTextIndex.add(fk, f);
+        else
+            fullTextIndex.update(fk, oldValue, f);
+        
+        return oldValue;
     }
     
     
@@ -828,44 +816,30 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
     {
         var fk = ensureFullFeatureKey(key);
         if (fk == null)
+            return null;        
+        
+        // remove from main index
+        V oldValue = featuresIndex.remove(fk);
+        if (oldValue == null)
             return null;
         
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
+        // remove entry from ID and UIDs index if no more feature entries are present
+        var internalID = fk.getInternalID();
+        var firstKey = new MVFeatureParentKey(fk.getParentID(), internalID, Instant.MIN);
+        var nextKey = featuresIndex.ceilingKey(firstKey);
+        if (nextKey == null || internalID.getIdAsLong() != nextKey.getInternalID().getIdAsLong())
         {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                // remove from main index
-                V oldValue = featuresIndex.remove(fk);
-                if (oldValue == null)
-                    return null;
-                
-                // remove entry from ID and UIDs index if no more feature entries are present
-                var internalID = fk.getInternalID();
-                var firstKey = new MVFeatureParentKey(fk.getParentID(), internalID, Instant.MIN);
-                var nextKey = featuresIndex.ceilingKey(firstKey);
-                if (nextKey == null || internalID.getIdAsLong() != nextKey.getInternalID().getIdAsLong())
-                {
-                    idsIndex.remove(firstKey);
-                    uidsIndex.remove(oldValue.getUniqueIdentifier());
-                }
-                
-                // remove from spatial index
-                spatialIndex.remove(fk, oldValue);
-                
-                // remove from full-text index
-                fullTextIndex.remove(fk, oldValue);
-                
-                return oldValue;
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
+            idsIndex.remove(firstKey);
+            uidsIndex.remove(oldValue.getUniqueIdentifier());
         }
+        
+        // remove from spatial index
+        spatialIndex.remove(fk, oldValue);
+        
+        // remove from full-text index
+        fullTextIndex.remove(fk, oldValue);
+        
+        return oldValue;
     }
 
 

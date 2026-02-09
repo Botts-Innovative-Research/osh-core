@@ -85,6 +85,7 @@ public abstract class AbstractHttpServiceModule<ConfigType extends ModuleConfig>
                 try
                 {
                     doStart();
+                    setState(ModuleState.STARTED);
                 }
                 catch (Exception ex)
                 {
@@ -98,6 +99,7 @@ public abstract class AbstractHttpServiceModule<ConfigType extends ModuleConfig>
                 try
                 {
                     doStop();
+                    setState(ModuleState.STOPPED);
                 }
                 catch (SensorHubException ex)
                 {

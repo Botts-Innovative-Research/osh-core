@@ -34,7 +34,7 @@ import org.sensorhub.api.datastore.command.ICommandStatusStore;
 import org.sensorhub.api.event.EventUtils;
 import org.sensorhub.api.event.IEventBus;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.BaseResourceHandler;
@@ -62,22 +62,22 @@ public class CommandStatusHandler extends BaseResourceHandler<BigId, ICommandSta
     final ScheduledExecutorService threadPool;
     
     
-    static class CommandStatusHandlerContextData
+    public static class CommandStatusHandlerContextData
     {
-        BigId streamID;
-        ICommandStreamInfo csInfo;
-        BigId foiId;
-        CommandStreamTransactionHandler csHandler;
+        public BigId streamID;
+        public ICommandStreamInfo csInfo;
+        public BigId foiId;
+        public CommandStreamTransactionHandler csHandler;
     }
     
     
-    public CommandStatusHandler(IEventBus eventBus, ObsSystemDbWrapper db, ScheduledExecutorService threadPool, ResourcePermissions permissions)
+    public CommandStatusHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions)
     {
-        super(db.getReadDb().getCommandStatusStore(), db.getCommandIdEncoder(), db.getIdEncoders(), permissions);
+        super(ctx.getReadDb().getCommandStatusStore(), ctx.getCommandIdEncoder(), ctx, permissions);
         
-        this.eventBus = eventBus;
-        this.db = db.getReadDb();
-        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, db.getWriteDb());
+        this.eventBus = ctx.getEventBus();
+        this.db = ctx.getReadDb();
+        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, ctx.getWriteDb());
         this.threadPool = threadPool;
     }
     
@@ -91,13 +91,19 @@ public class CommandStatusHandler extends BaseResourceHandler<BigId, ICommandSta
         ctx.setData(contextData);
         
         // try to fetch command stream since it's needed to configure binding
-        var dsID = ctx.getParentID();
-        if (dsID != null)
+        Asserts.checkState(ctx.getParentID() != null);
+        BigId csID = null;
+        if (ctx.getParentRef().type instanceof CommandHandler)
         {
-            var parentType = ctx.getParentRef().type;
-            if (parentType instanceof CommandStreamHandler)
-                contextData.csInfo = db.getCommandStreamStore().get(new CommandStreamKey(dsID));
+            var cmd = db.getCommandStore().get(ctx.getParentID());
+            csID = cmd.getCommandStreamID();
         }
+        else if (ctx.getParentRef().type instanceof CommandStreamHandler)
+            csID = ctx.getParentID();
+        
+        Asserts.checkNotNull(csID, BigId.class);
+        contextData.csInfo = db.getCommandStreamStore().get(new CommandStreamKey(csID));
+        Asserts.checkNotNull(contextData.csInfo, ICommandStreamInfo.class);
         
         if (forReading)
         {
@@ -105,7 +111,7 @@ public class CommandStatusHandler extends BaseResourceHandler<BigId, ICommandSta
             Asserts.checkNotNull(contextData.csInfo, ICommandStreamInfo.class);
             
             // create transaction handler here so it can be reused multiple times
-            contextData.streamID = dsID;
+            contextData.streamID = csID;
             contextData.csHandler = transactionHandler.getCommandStreamHandler(contextData.streamID);
             if (contextData.csHandler == null)
                 throw ServiceErrors.notWritable();
@@ -227,7 +233,7 @@ public class CommandStatusHandler extends BaseResourceHandler<BigId, ICommandSta
     @Override
     protected BigId getKey(RequestContext ctx, String id) throws InvalidRequestException
     {
-        return decodeID(ctx, id);
+        return decodeID(id);
     }
     
     

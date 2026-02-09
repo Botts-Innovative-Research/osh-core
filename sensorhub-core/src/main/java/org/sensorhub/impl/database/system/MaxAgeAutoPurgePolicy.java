@@ -59,7 +59,7 @@ public class MaxAgeAutoPurgePolicy implements IObsSystemDbAutoPurgePolicy
         // ended before (now - max age)        
         var oldestRecordTime = Instant.now().minusSeconds((long)config.maxRecordAge);
 
-        long numProcRemoved = db.getSystemDescStore().removeEntries(new SystemFilter.Builder()
+        long numSysRemoved = db.getSystemDescStore().removeEntries(new SystemFilter.Builder()
             .withValidTime(new TemporalFilter.Builder()
                 .withOperator(RangeOp.CONTAINS)
                 .withRange(Instant.MIN, oldestRecordTime)
@@ -75,8 +75,10 @@ public class MaxAgeAutoPurgePolicy implements IObsSystemDbAutoPurgePolicy
                 .withOperator(RangeOp.CONTAINS)
                 .withRange(Instant.MIN, oldestRecordTime)
                 .build())
-            .withUniqueIDs(systemUIDs)
-            .includeMembers(true)
+            .withParents(new SystemFilter.Builder()
+                .withUniqueIDs(systemUIDs)
+                .includeMembers(true)
+                .build())
             .build());
         
         long numDsRemoved = db.getDataStreamStore().removeEntries(new DataStreamFilter.Builder()
@@ -117,6 +119,9 @@ public class MaxAgeAutoPurgePolicy implements IObsSystemDbAutoPurgePolicy
             if (resultTimeRange != null)
             {
                 var oldestResultTime = resultTimeRange.end().minusSeconds((long)config.maxRecordAge);
+                if (oldestResultTime.isAfter(oldestRecordTime))
+                    oldestResultTime = oldestRecordTime;
+                
                 numObsRemoved += db.getObservationStore().removeEntries(new ObsFilter.Builder()
                     .withDataStreams(dsID)
                     .withResultTimeDuring(Instant.MIN, oldestResultTime)
@@ -151,7 +156,7 @@ public class MaxAgeAutoPurgePolicy implements IObsSystemDbAutoPurgePolicy
         {
             log.info("Purging data until {}. Removed records: {} systems, {} fois, {} datastreams, {} observations, {} command streams, {} commands",
                 oldestRecordTime.truncatedTo(ChronoUnit.SECONDS),
-                numProcRemoved, numFoisRemoved, numDsRemoved, numObsRemoved, numCsRemoved, numCmdRemoved);
+                numSysRemoved, numFoisRemoved, numDsRemoved, numObsRemoved, numCsRemoved, numCmdRemoved);
         }
     }
 

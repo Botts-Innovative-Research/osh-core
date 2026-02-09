@@ -19,10 +19,14 @@ import java.io.PrintStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.LogManager;
+
+import com.vaadin.server.VaadinServlet;
+import org.eclipse.jetty.servlet.ErrorPageErrorHandler;
 import org.sensorhub.api.comm.CommProviderConfig;
 import org.sensorhub.api.comm.NetworkConfig;
 import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.database.DatabaseConfig;
+import org.sensorhub.api.database.IObsSystemDatabase;
 import org.sensorhub.api.datastore.command.CommandFilter;
 import org.sensorhub.api.datastore.command.CommandStreamFilter;
 import org.sensorhub.api.datastore.obs.DataStreamFilter;
@@ -30,6 +34,7 @@ import org.sensorhub.api.datastore.obs.ObsFilter;
 import org.sensorhub.api.datastore.system.SystemFilter;
 import org.sensorhub.api.event.IEventListener;
 import org.sensorhub.api.module.IModule;
+import org.sensorhub.api.module.ModuleConfig;
 import org.sensorhub.api.module.ModuleEvent.ModuleState;
 import org.sensorhub.api.processing.ProcessConfig;
 import org.sensorhub.api.sensor.SensorConfig;
@@ -37,6 +42,7 @@ import org.sensorhub.impl.database.system.SystemDriverDatabaseConfig;
 import org.sensorhub.impl.datastore.view.ObsSystemDatabaseViewConfig;
 import org.sensorhub.impl.security.BasicSecurityRealmConfig;
 import org.sensorhub.impl.service.AbstractHttpServiceModule;
+import org.sensorhub.impl.service.HttpServer;
 import org.sensorhub.impl.service.HttpServerConfig;
 import org.sensorhub.impl.service.sos.SOSServiceConfig;
 import org.sensorhub.impl.service.sps.SPSServiceConfig;
@@ -44,7 +50,6 @@ import org.sensorhub.ui.api.IModuleAdminPanel;
 import org.sensorhub.ui.api.IModuleConfigForm;
 import org.sensorhub.ui.filter.DatabaseFilterConfigForm;
 import org.sensorhub.ui.filter.DatabaseViewConfigForm;
-import com.vaadin.server.VaadinServlet;
 
 
 public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> implements IEventListener
@@ -54,7 +59,10 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
     protected static final String WIDGETSET = "widgetset";
     protected static final int HEARTBEAT_INTERVAL = 10; // in seconds
     
-    VaadinServlet vaadinServlet;
+    VaadinServlet adminUIServlet;
+    VaadinServlet vaaadinResourcesServlet;
+    VaadinServlet landingServlet;
+
     AdminUISecurity securityHandler;
     Map<String, Class<? extends IModuleConfigForm>> customForms = new HashMap<>();
     Map<String, Class<? extends IModuleAdminPanel<?>>> customPanels = new HashMap<>();
@@ -117,7 +125,7 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
             // load default panel builders
             customPanels.put(SensorConfig.class.getCanonicalName(), SensorAdminPanel.class);
             customPanels.put(ProcessConfig.class.getCanonicalName(), ProcessAdminPanel.class);
-            customPanels.put(DatabaseConfig.class.getCanonicalName(), DatabaseAdminPanel.class);
+            customPanels.put(IObsSystemDatabase.class.getCanonicalName(), DatabaseAdminPanel.class);
             customPanels.put(NetworkConfig.class.getCanonicalName(), NetworkAdminPanel.class);
             customPanels.put(SOSServiceConfig.class.getCanonicalName(), SOSAdminPanel.class);
             customPanels.put(SPSServiceConfig.class.getCanonicalName(), SPSAdminPanel.class);
@@ -145,30 +153,64 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
         // reset java util logging config so we don't get annoying atmosphere logs
         LogManager.getLogManager().reset();//.getLogger("org.atmosphere").setLevel(Level.OFF);
         
-        vaadinServlet = new AdminUIServlet(getSecurityHandler(), getLogger());
+        adminUIServlet = new AdminUIServlet(getSecurityHandler(), getLogger());
+        vaaadinResourcesServlet = new VaadinResourcesServlet(this, getLogger());
+        landingServlet = new LandingServlet(this, getSecurityHandler(), getLogger());
+
         Map<String, String> initParams = new HashMap<>();
+        Map<String, String> initLandingParams = new HashMap<>();
         initParams.put(SERVLET_PARAM_UI_CLASS, AdminUI.class.getCanonicalName());
-        if (config.widgetSet != null)
+        if (config.widgetSet != null){
             initParams.put(WIDGETSET, config.widgetSet);
+            initLandingParams.put(WIDGETSET, config.widgetSet);
+        }
         initParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
         initParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
-        
+
+
+        initLandingParams.put(SERVLET_PARAM_UI_CLASS, LandingUI.class.getCanonicalName());
+        if (config.widgetSet != null) initLandingParams.put(WIDGETSET, config.widgetSet);
+        initLandingParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
+        initLandingParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
+
         // deploy servlet
         // HACK: we have to disable std err to hide message due to Vaadin duplicate implementation of SL4J
-        // Note that this may hide error messages in other modules now that startup sequence is multithreaded
+        // Note that this may hide error messages in oth er modules now that startup sequence is multithreaded
         PrintStream oldStdErr = System.err;
         System.setErr(new PrintStream(new OutputStream() {
             @Override
             public void write(int b) { }
         }));
-        httpServer.deployServlet(vaadinServlet, initParams, "/admin/*", "/VAADIN/*");
-        System.setErr(oldStdErr);
-        vaadinServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+
+
+        if (config.enableLandingPage){
+            httpServer.deployServlet(vaaadinResourcesServlet, initParams, "/VAADIN/*");
+            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*");
+            httpServer.deployServlet(landingServlet, initLandingParams, "/*");
+            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+            landingServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+            httpServer.addServletSecurity("/*", true);
+
+            var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
+
+            ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
+            errorHandler.addErrorPage(400, "/error/invalid");
+            errorHandler.addErrorPage(403, "/error/forbidden");
+            errorHandler.addErrorPage(404, "/error/notfound");
+
+            server.getServletHandler().setErrorHandler(errorHandler);
+        }
+        else {
+            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
+            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+        }
         
+        System.setErr(oldStdErr);
+
         // setup security
         httpServer.addServletSecurity("/admin/*", true);
         httpServer.addServletSecurity("/VAADIN/*", true);
-        
+
         setState(ModuleState.STARTED);
     }
     
@@ -176,30 +218,51 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
     @Override
     protected void doStop() throws SensorHubException
     {
-        if (vaadinServlet != null)
+        if (adminUIServlet != null)
         {
-            httpServer.undeployServlet(vaadinServlet);
-            vaadinServlet = null;
+            httpServer.undeployServlet(adminUIServlet);
+            adminUIServlet = null;
         }
-        
+
+        if(landingServlet != null){
+            httpServer.undeployServlet(landingServlet);
+            landingServlet = null;
+        }
+
+        if(vaaadinResourcesServlet != null){
+            httpServer.undeployServlet(vaaadinResourcesServlet);
+            vaaadinResourcesServlet = null;
+        }
         setState(ModuleState.STOPPED);
     }
     
     
     @SuppressWarnings("unchecked")
-    protected IModuleAdminPanel<IModule<?>> generatePanel(Class<?> clazz)
+    protected IModuleAdminPanel<IModule<?>> generatePanel(IModule<?> m)
     {
         IModuleAdminPanel<IModule<?>> panel = null;
         
         try
         {
             Class<IModuleAdminPanel<IModule<?>>> uiClass = null;
+            Class<?> configClass = m.getConfiguration().getClass();
             
             // check if there is a custom panel registered, if not use default
-            while (uiClass == null && clazz != null)
+            while (uiClass == null && configClass != null)
             {
-                uiClass = (Class<IModuleAdminPanel<IModule<?>>>)customPanels.get(clazz.getCanonicalName());
-                clazz = clazz.getSuperclass();
+                uiClass = (Class<IModuleAdminPanel<IModule<?>>>)customPanels.get(configClass.getCanonicalName());
+                configClass = configClass.getSuperclass();
+            }
+            
+            // also lookup using module class
+            if (uiClass == null)
+            {
+                var moduleClass = m.getClass();
+                for (var entry: customPanels.entrySet()) {
+                    var classForKey = Class.forName(entry.getKey());
+                    if (classForKey.isAssignableFrom(moduleClass))
+                        uiClass = (Class<IModuleAdminPanel<IModule<?>>>)entry.getValue();
+                }
             }
             
             if (uiClass != null)

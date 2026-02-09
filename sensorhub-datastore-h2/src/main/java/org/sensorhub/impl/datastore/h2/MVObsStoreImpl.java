@@ -47,6 +47,8 @@ import org.sensorhub.api.feature.FeatureId;
 import org.sensorhub.impl.datastore.DataStoreUtils;
 import org.sensorhub.impl.datastore.MergeSortSpliterator;
 import org.sensorhub.impl.datastore.h2.MVDatabaseConfig.IdProviderType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.vast.util.Asserts;
 import org.vast.util.TimeExtent;
 import com.google.common.collect.Range;
@@ -66,6 +68,8 @@ import net.opengis.swe.v20.DataBlock;
  */
 public class MVObsStoreImpl implements IObsStore
 {
+    static Logger logger = LoggerFactory.getLogger(MVObsStoreImpl.class);
+    
     private static final String OBS_RECORDS_MAP_NAME = "obs_records";
     private static final String OBS_SERIES_MAP_NAME = "obs_series";
     private static final String OBS_SERIES_FOI_MAP_NAME = "obs_series_foi";
@@ -259,9 +263,11 @@ public class MVObsStoreImpl implements IObsStore
             })
             .map(k -> {
                 MVTimeSeriesInfo series = obsSeriesMainIndex.get(k);
-                series.key = k;
+                if (series != null)
+                    series.key = k;
                 return series;
-            });
+            })
+            .filter(Objects::nonNull);
     }
     
     
@@ -420,6 +426,7 @@ public class MVObsStoreImpl implements IObsStore
         // just get one record per series alternatively
         if (numSeries > maxOrderedSeries)
         {
+            logger.warn("Query hits a large number of observation series: time sorting disabled");
             return Stream.iterate(0, i -> i++)
                 .flatMap(i -> {
                     return selectObsSeries(filter, timeParams)
@@ -429,7 +436,6 @@ public class MVObsStoreImpl implements IObsStore
                                 timeParams.phenomenonTimeRange,
                                 timeParams.currentTimeOnly,
                                 timeParams.latestResultOnly);
-                            System.err.println("skip="+i);
                             return getPostFilteredResultStream(obsStream, filter).skip(i).limit(1);
                         }); 
                 })
@@ -770,25 +776,11 @@ public class MVObsStoreImpl implements IObsStore
 
 
     @Override
-    public void clear()
+    public synchronized void clear()
     {
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
-        {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                obsRecordsIndex.clear();
-                obsSeriesByFoiIndex.clear();
-                obsSeriesMainIndex.clear();
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
-        }
+        obsRecordsIndex.clear();
+        obsSeriesByFoiIndex.clear();
+        obsSeriesMainIndex.clear();
     }
 
 
@@ -883,7 +875,7 @@ public class MVObsStoreImpl implements IObsStore
     
     
     @Override
-    public BigId add(IObsData obs)
+    public synchronized BigId add(IObsData obs)
     {
         // check that datastream exists
         if (!dataStreamStore.containsKey(new DataStreamKey(obs.getDataStreamID())))
@@ -892,95 +884,96 @@ public class MVObsStoreImpl implements IObsStore
         // check that FOI exists
         if (obs.hasFoi() && foiStore != null && !foiStore.contains(obs.getFoiID()))
             throw new IllegalStateException("Unknown FOI: " + obs.getFoiID());
+        
+        MVTimeSeriesKey seriesKey = new MVTimeSeriesKey(
+            obs.getDataStreamID().getIdAsLong(),
+            obs.getFoiID().getIdAsLong(),
+            obs.getResultTime().equals(obs.getPhenomenonTime()) ? Instant.MIN : obs.getResultTime());
+        
+        MVTimeSeriesInfo series = obsSeriesMainIndex.computeIfAbsent(seriesKey, k -> {
+            // also update the FOI to series mapping if needed
+            obsSeriesByFoiIndex.putIfAbsent(seriesKey, Boolean.TRUE);
             
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
-        {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                MVTimeSeriesKey seriesKey = new MVTimeSeriesKey(
-                    obs.getDataStreamID().getIdAsLong(),
-                    obs.getFoiID().getIdAsLong(),
-                    obs.getResultTime().equals(obs.getPhenomenonTime()) ? Instant.MIN : obs.getResultTime());
-                
-                MVTimeSeriesInfo series = obsSeriesMainIndex.computeIfAbsent(seriesKey, k -> {
-                    // also update the FOI to series mapping if needed
-                    obsSeriesByFoiIndex.putIfAbsent(seriesKey, Boolean.TRUE);
-                    
-                    return new MVTimeSeriesInfo(
-                        obsRecordsIndex.isEmpty() ? 1 : obsRecordsIndex.lastKey().seriesID + 1);
-                });
-                
-                // add to main obs index
-                MVTimeSeriesRecordKey obsKey = new MVTimeSeriesRecordKey(idScope, series.id, obs.getPhenomenonTime());
-                obsRecordsIndex.put(obsKey, obs);
-                
-                return obsKey;
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
-        }
+            return new MVTimeSeriesInfo(
+                obsRecordsIndex.isEmpty() ? 1 : obsRecordsIndex.lastKey().seriesID + 1);
+        });
+        
+        // add to main obs index
+        MVTimeSeriesRecordKey obsKey = new MVTimeSeriesRecordKey(idScope, series.id, obs.getPhenomenonTime());
+        obsRecordsIndex.put(obsKey, obs);
+        
+        return obsKey;
     }
 
 
     @Override
-    public IObsData put(BigId key, IObsData obs)
-    {
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
-        {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                MVTimeSeriesRecordKey obsKey = toInternalKey(key);
-                IObsData oldObs = obsRecordsIndex.replace(obsKey, obs);
-                if (oldObs == null)
-                    throw new UnsupportedOperationException("put can only be used to update existing entries");
-                return oldObs;
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
-        }
+    public synchronized IObsData put(BigId key, IObsData obs)
+    {        
+        MVTimeSeriesRecordKey obsKey = toInternalKey(key);
+        IObsData oldObs = obsRecordsIndex.replace(obsKey, obs);
+        if (oldObs == null)
+            throw new UnsupportedOperationException("put can only be used to update existing observations");
+        return oldObs;
     }
 
 
     @Override
-    public IObsData remove(Object keyObj)
+    public synchronized IObsData remove(Object keyObj)
     {
-        // synchronize on MVStore to avoid autocommit in the middle of things
-        synchronized (mvStore)
+        MVTimeSeriesRecordKey key = toInternalKey(keyObj);
+        IObsData oldObs = obsRecordsIndex.remove(key);
+        
+        // don't check and remove empty obs series here since in many cases they will be reused.
+        // it can be done automatically during cleanup/compaction phase or with specific method.
+        
+        return oldObs;     
+    }
+
+
+    @Override
+    public synchronized long removeEntries(ObsFilter filter)
+    {
+        // stream obs directly in case of filtering by internal IDs
+        if (filter.getInternalIDs() != null)
         {
-            long currentVersion = mvStore.getCurrentVersion();
+            var obsStream = filter.getInternalIDs().stream()
+                .map(k -> toInternalKey(k))
+                .filter(Objects::nonNull)
+                .map(k -> obsRecordsIndex.getEntry(k))
+                .filter(Objects::nonNull);
             
-            try
-            {
-                MVTimeSeriesRecordKey key = toInternalKey(keyObj);
-                IObsData oldObs = obsRecordsIndex.remove(key);
+            return getPostFilteredResultStream(obsStream, filter)
+                .peek(e -> remove(e.getKey()))
+                .count();
+        }
+        
+        // select obs series matching the filter
+        var timeParams = new TimeParams(filter);
+        return selectObsSeries(filter, timeParams)
+            .mapToLong(series -> {
+                var obsStream = getObsStream(series, 
+                    timeParams.resultTimeRange,
+                    timeParams.phenomenonTimeRange,
+                    timeParams.currentTimeOnly,
+                    timeParams.latestResultOnly);
                 
-                // don't check and remove empty obs series here since in many cases they will be reused.
-                // it can be done automatically during cleanup/compaction phase or with specific method.
+                // delete all matching record in series
+                var numRemoved = getPostFilteredResultStream(obsStream, filter)
+                    .peek(e -> remove(e.getKey()))
+                    .count();
                 
-                return oldObs;
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
-        }        
+                // delete series if it has no more records
+                if (getObsSeriesCount(series.id, H2Utils.ALL_TIMES_RANGE) == 0) {
+                    obsSeriesByFoiIndex.remove(series.key);
+                    obsSeriesMainIndex.remove(series.key);
+                }   
+                
+                return numRemoved;
+            }).sum();
     }
     
 
-    protected void removeAllObsAndSeries(long datastreamID)
+    protected synchronized void removeAllObsAndSeries(long datastreamID)
     {
         // remove a)ll series and obs
         MVTimeSeriesKey first = new MVTimeSeriesKey(datastreamID, 0, Instant.MIN);
@@ -997,8 +990,8 @@ public class MVObsStoreImpl implements IObsStore
             });
             
             // remove series from index
-            obsSeriesMainIndex.remove(entry.getKey());
             obsSeriesByFoiIndex.remove(entry.getKey());
+            obsSeriesMainIndex.remove(entry.getKey());
         });
     }
 

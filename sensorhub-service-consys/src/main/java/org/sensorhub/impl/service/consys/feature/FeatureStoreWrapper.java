@@ -23,7 +23,7 @@ import org.vast.ogc.gml.IFeature;
 public class FeatureStoreWrapper extends AbstractFeatureStoreWrapper<IFeature, FeatureField, FeatureFilter, IFeatureStore> implements IFeatureStore
 {
 
-    protected FeatureStoreWrapper(IFeatureStore readStore, IFeatureStore writeStore)
+    public FeatureStoreWrapper(IFeatureStore readStore, IFeatureStore writeStore)
     {
         super(readStore, writeStore);
     }

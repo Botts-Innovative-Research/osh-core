@@ -73,6 +73,15 @@ public class ConSysApiServiceConfig extends OGCServiceConfig
     
     @DisplayInfo(desc="Default live time-out for new offerings created via SOS-T")
     public double defaultLiveTimeout = 600.0;
+    
+    
+    @DisplayInfo(label="URI Prefix Map", desc="Mappings used by CURIE to URI resolver")
+    public List<String> uriPrefixMap = new ArrayList<>();
+
+
+    @DisplayInfo(label="Thread Pool Size", desc="Number of threads used by the service to handle incoming requests. " +
+            "When this value is <= 0, the size of the thread pool will be equal to the available number of CPU processors.")
+    public int threadPoolSize = 0;
 
 
     public ConSysApiServiceConfig()

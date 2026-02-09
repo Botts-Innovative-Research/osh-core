@@ -17,13 +17,13 @@ package org.sensorhub.impl.service.consys.feature;
 import java.io.IOException;
 import java.util.Map;
 import org.sensorhub.api.common.BigId;
-import org.sensorhub.api.common.IdEncoders;
 import org.sensorhub.api.database.IFeatureDatabase;
 import org.sensorhub.api.datastore.feature.FeatureFilter;
 import org.sensorhub.api.datastore.feature.IFeatureStore;
 import org.sensorhub.api.datastore.feature.FeatureFilter.Builder;
 import org.sensorhub.api.datastore.feature.FeatureKey;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ResourceParseException;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
@@ -42,10 +42,10 @@ public class FeatureHandler extends AbstractFeatureHandler<IFeature, FeatureFilt
     final IFeatureDatabase db;
     
     
-    public FeatureHandler(IFeatureDatabase db, IdEncoders idEncoders, ResourcePermissions permissions)
+    public FeatureHandler(HandlerContext ctx, ResourcePermissions permissions)
     {
-        super(db.getFeatureStore(), idEncoders.getFeatureIdEncoder(), idEncoders, permissions);
-        this.db = db;
+        super(ctx.getFeatureStore(), ctx.getFeatureIdEncoder(), ctx, permissions);
+        this.db = ctx;
     }
 
 

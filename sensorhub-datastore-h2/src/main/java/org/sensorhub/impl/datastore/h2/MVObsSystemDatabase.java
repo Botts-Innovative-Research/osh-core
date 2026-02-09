@@ -187,7 +187,7 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
         }
         
         // log store info if debug is enabled
-        if (getLogger().isDebugEnabled() && new File(config.storagePath).exists())
+        if (config.printDebugInfoOnClose && getLogger().isDebugEnabled() && new File(config.storagePath).exists())
         {
             // log summary info
             var strWriter = new StringWriter();
@@ -287,22 +287,20 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
     
     
     @Override
-    public <T> T executeTransaction(Callable<T> transaction) throws Exception
+    public synchronized <T> T executeTransaction(Callable<T> transaction) throws Exception
     {
         checkStarted();
-        synchronized (mvStore)
+        
+        // store current version so we can rollback if an error occurs
+        long currentVersion = mvStore.commit();
+        try
         {
-            long currentVersion = mvStore.getCurrentVersion();
-            
-            try
-            {
-                return transaction.call();
-            }
-            catch (Exception e)
-            {
-                mvStore.rollbackTo(currentVersion);
-                throw e;
-            }
+            return transaction.call();
+        }
+        catch (Exception e)
+        {
+            mvStore.rollbackTo(currentVersion);
+            throw e;
         }
     }
 

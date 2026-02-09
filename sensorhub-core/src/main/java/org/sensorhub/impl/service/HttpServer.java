@@ -41,13 +41,10 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.handler.ContextHandler;
+import org.eclipse.jetty.server.handler.HandlerCollection;
 import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.server.handler.ResourceHandler;
-import org.eclipse.jetty.servlet.FilterHolder;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.eclipse.jetty.servlet.ServletMapping;
+import org.eclipse.jetty.servlet.*;
 import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.security.Constraint;
@@ -121,7 +118,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             server = new Server();
             ServerConnector http = null;
             ServerConnector https = null;
-            HandlerList handlers = new HandlerList();
+            HandlerCollection handlers = new HandlerCollection(true);
             
             // HTTP connector
             HttpConfiguration httpConfig = new HttpConfiguration();
@@ -300,7 +297,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
         }
     }
     
-    
+
     @Override
     protected synchronized void doStop() throws SensorHubException
     {
@@ -416,8 +413,8 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             jettySecurityHandler.addConstraintMapping(cm);
         }
     }
-    
-    
+
+
     public String getServerBaseUrl()
     {
         String baseUrl = "";
@@ -537,5 +534,9 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
     public boolean isAuthEnabled()
     {
         return config.authMethod != AuthMethod.NONE;
+    }
+
+    public ServletContextHandler getServletHandler() {
+        return servletHandler;
     }
 }

@@ -27,7 +27,7 @@ import org.sensorhub.api.datastore.command.CommandStreamKey;
 import org.sensorhub.api.datastore.command.ICommandStatusStore;
 import org.sensorhub.api.event.IEventBus;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.BaseResourceHandler;
@@ -51,13 +51,13 @@ public class CommandResultHandler extends BaseResourceHandler<BigId, ICommandSta
     final ScheduledExecutorService threadPool;
     
     
-    public CommandResultHandler(IEventBus eventBus, ObsSystemDbWrapper db, ScheduledExecutorService threadPool, ResourcePermissions permissions)
+    public CommandResultHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions)
     {
-        super(db.getReadDb().getCommandStatusStore(), db.getCommandIdEncoder(), db.getIdEncoders(), permissions);
+        super(ctx.getReadDb().getCommandStatusStore(), ctx.getCommandIdEncoder(), ctx, permissions);
         
-        this.eventBus = eventBus;
-        this.db = db.getReadDb();
-        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, db.getWriteDb());
+        this.eventBus = ctx.getEventBus();
+        this.db = ctx.getReadDb();
+        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, ctx.getWriteDb());
         this.threadPool = threadPool;
     }
     
@@ -121,7 +121,7 @@ public class CommandResultHandler extends BaseResourceHandler<BigId, ICommandSta
     @Override
     protected BigId getKey(RequestContext ctx, String id) throws InvalidRequestException
     {
-        return decodeID(ctx, id);
+        return decodeID(id);
     }
     
     

@@ -85,7 +85,7 @@ public abstract class AbstractTestCommandStore<StoreType extends ICommandStore>
     public void init() throws Exception
     {
         this.cmdStore = initStore();
-        
+
     }
 
 
@@ -308,7 +308,7 @@ public abstract class AbstractTestCommandStore<StoreType extends ICommandStore>
     public void testGetWrongKey() throws Exception
     {
         testGetNumRecordsOneDataStream();
-        assertNull(cmdStore.get(bigId(11)));
+        assertNull(cmdStore.get(bigId(110)));
     }
 
 

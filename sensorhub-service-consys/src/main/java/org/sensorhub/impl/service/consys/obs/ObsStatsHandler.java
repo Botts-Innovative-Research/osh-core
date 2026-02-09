@@ -28,7 +28,7 @@ import org.sensorhub.api.datastore.obs.ObsStatsQuery;
 import org.sensorhub.api.feature.FeatureId;
 import org.sensorhub.impl.service.consys.BaseHandler;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
@@ -58,10 +58,10 @@ public class ObsStatsHandler extends BaseHandler
     }
     
     
-    public ObsStatsHandler(ObsSystemDbWrapper db, ResourcePermissions permissions)
+    public ObsStatsHandler(HandlerContext ctx, ResourcePermissions permissions)
     {
-        super(db.getIdEncoders());
-        this.db = db.getReadDb();
+        super(ctx);
+        this.db = ctx.getReadDb();
         this.permissions = permissions;
     }
     
@@ -229,5 +229,12 @@ public class ObsStatsHandler extends BaseHandler
     public String[] getNames()
     {
         return NAMES;
+    }
+
+
+    @Override
+    protected BigId decodeID(String id) throws InvalidRequestException
+    {
+        throw ServiceErrors.notFound(id);
     }
 }

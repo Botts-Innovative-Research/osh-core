@@ -17,7 +17,6 @@ package org.sensorhub.impl.service.sos;
 import java.util.stream.Collectors;
 import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.datastore.obs.ObsFilter;
-import org.sensorhub.api.module.ModuleEvent.ModuleState;
 import org.sensorhub.impl.service.swe.SWEService;
 import org.vast.ows.sos.SOSServiceCapabilities;
 import com.google.common.base.Strings;
@@ -53,7 +52,7 @@ public class SOSService extends SWEService<SOSServiceConfig>
         for (var formatConfig: config.customFormats)
         {
             if (Strings.isNullOrEmpty(formatConfig.mimeType))
-                throw new SensorHubException("Custum format must specify a mime type");
+                throw new SensorHubException("Custom format must specify a mime type");
         }        
         
         this.securityHandler = new SOSSecurity(this, config.security.enableAccessControl);
@@ -94,8 +93,6 @@ public class SOSService extends SWEService<SOSServiceConfig>
         // deploy servlet
         servlet = new SOSServlet(this, (SOSSecurity)this.securityHandler, getLogger());
         deploy();
-
-        setState(ModuleState.STARTED);
     }
 
 

@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Flow.Subscriber;
@@ -30,6 +31,7 @@ import org.sensorhub.api.common.BigId;
 import org.sensorhub.api.data.IDataStreamInfo;
 import org.sensorhub.api.data.IObsData;
 import org.sensorhub.api.data.ObsEvent;
+import org.sensorhub.api.database.IObsSystemDatabase;
 import org.sensorhub.api.datastore.DataStoreException;
 import org.sensorhub.api.datastore.SpatialFilter;
 import org.sensorhub.api.datastore.obs.DataStreamKey;
@@ -38,7 +40,8 @@ import org.sensorhub.api.datastore.obs.ObsFilter;
 import org.sensorhub.api.event.EventUtils;
 import org.sensorhub.api.event.IEventBus;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.datastore.DataStoreUtils;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.BaseResourceHandler;
@@ -63,7 +66,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
     public static final String[] NAMES = { "observations" };
     
     final IEventBus eventBus;
-    final ObsSystemDbWrapper db;
+    final IObsSystemDatabase db;
     final SystemDatabaseTransactionHandler transactionHandler;
     final ScheduledExecutorService threadPool;
     final Map<String, CustomObsFormat> customFormats;
@@ -78,13 +81,13 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
     }
     
     
-    public ObsHandler(IEventBus eventBus, ObsSystemDbWrapper db, ScheduledExecutorService threadPool, ResourcePermissions permissions, Map<String, CustomObsFormat> customFormats)
+    public ObsHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions, Map<String, CustomObsFormat> customFormats)
     {
-        super(db.getReadDb().getObservationStore(), db.getObsIdEncoder(), db.getIdEncoders(), permissions);
+        super(ctx.getReadDb().getObservationStore(), ctx.getObsIdEncoder(), ctx, permissions);
         
-        this.eventBus = eventBus;
-        this.db = db;
-        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, db.getWriteDb());
+        this.eventBus = ctx.getEventBus();
+        this.db = ctx;
+        this.transactionHandler = new SystemDatabaseTransactionHandler(eventBus, ctx.getWriteDb());
         this.threadPool = threadPool;
         this.customFormats = Asserts.checkNotNull(customFormats);
     }
@@ -115,7 +118,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
             String foiArg = ctx.getParameter("foi");
             if (foiArg != null)
             {
-                var foiID = decodeID(ctx, foiArg);
+                var foiID = decodeID(foiArg);
                 if (!db.getFoiStore().contains(foiID))
                     throw ServiceErrors.badRequest("Invalid FOI ID");
                 contextData.foiId = foiID;
@@ -272,6 +275,10 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
         var dsInfo = ((ObsHandlerContextData)ctx.getData()).dsInfo;
         var streamHandler = ctx.getStreamHandler();
         
+        // if FOI filter present, lookup acceptable feature IDs
+        var foiIDs = filter.getFoiFilter() != null ?
+            DataStoreUtils.selectFeatureIDs(db.getFoiStore(), filter.getFoiFilter()).collect(Collectors.toSet()) : null;
+        
         // create subscriber
         var subscriber = new Subscriber<ObsEvent>() {
             volatile Subscription subscription;
@@ -289,6 +296,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                 {
                     db.getObservationStore().select(new ObsFilter.Builder()
                         .withDataStreams(dsID)
+                        .withFois(filter.getFoiFilter())
                         .withLatestResult()
                         .build()).findFirst().ifPresent(latestObs -> {
                             latestObsTime = latestObs.getResultTime();
@@ -311,7 +319,10 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
             public void onNext(ObsEvent event)
             {
                 for (var obs: event.getObservations())
-                    sendObs(obs);
+                {
+                    if (foiIDs == null || foiIDs.contains(obs.getFoiID()))
+                        sendObs(obs);
+                }
             }
             
             protected void sendObs(IObsData obs)
@@ -454,7 +465,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
     @Override
     protected BigId getKey(RequestContext ctx, String id) throws InvalidRequestException
     {
-        return decodeID(ctx, id);
+        return decodeID(id);
     }
     
     
@@ -493,11 +504,26 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
             else
                 builder.withFois(foiIDs.getBigIds());
         }
+
+        // system param
+        var sysIDs = parseResourceIdsOrUids("system", queryParams, idEncoders.getSystemIdEncoder());
+        if (sysIDs != null && !sysIDs.isEmpty())
+        {
+            if (sysIDs.isUids())
+                builder.withSystems().withUniqueIDs(sysIDs.getUids()).done();
+            else
+                builder.withSystems(sysIDs.getBigIds());
+        }
         
         // datastream param
-        var dsIDs = parseResourceIds("datastream", queryParams, idEncoders.getDataStreamIdEncoder());
+        var dsIDs = parseResourceIdsOrUids("dataStream", queryParams, idEncoders.getDataStreamIdEncoder());
         if (dsIDs != null && !dsIDs.isEmpty())
-            builder.withDataStreams(dsIDs);
+            builder.withDataStreams(dsIDs.getBigIds());
+
+        // observedProperty param
+        var obsProps = parseMultiValuesArg("observedProperty", queryParams);
+        if (obsProps != null && !obsProps.isEmpty())
+            builder.withDataStreams().withObservedProperties(obsProps).done();
         
         // use opensearch bbox param to filter spatially
         var bbox = parseBboxArg("bbox", queryParams);

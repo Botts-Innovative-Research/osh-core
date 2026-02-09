@@ -42,7 +42,7 @@ import org.sensorhub.api.event.IEventBus;
 import org.sensorhub.impl.service.consys.ConSysApiSecurity;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
 import org.sensorhub.impl.service.consys.InvalidRequestException.ErrorCode;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.BaseResourceHandler;
@@ -75,24 +75,24 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
     public static class CommandHandlerContextData
     {
         public BigId streamID;
-        public ICommandStreamInfo dsInfo;
+        public ICommandStreamInfo csInfo;
         public BigId foiId;
         public CommandStreamTransactionHandler dsHandler;
     }
     
     
-    public CommandHandler(IEventBus eventBus, ObsSystemDbWrapper db, ScheduledExecutorService threadPool, ResourcePermissions permissions)
+    public CommandHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions)
     {
-        super(db.getReadDb().getCommandStore(), db.getCommandIdEncoder(), db.getIdEncoders(), permissions);
+        super(ctx.getReadDb().getCommandStore(), ctx.getCommandIdEncoder(), ctx, permissions);
         
-        this.eventBus = eventBus;
-        this.db = db.getReadDb();
+        this.eventBus = ctx.getEventBus();
+        this.db = ctx.getReadDb();
         this.threadPool = threadPool;
         
         // I know the doc says otherwise but we need to use the federated DB for command transactions here
         // because we don't write to DB directly but rather send commands to systems that can be in other databases
-        this.readOnlyTxHandler = new SystemDatabaseTransactionHandler(eventBus, db.getReadDb());
-        this.fullTxHandler = new SystemDatabaseTransactionHandler(eventBus, db.getWriteDb());
+        this.readOnlyTxHandler = new SystemDatabaseTransactionHandler(eventBus, ctx.getReadDb());
+        this.fullTxHandler = new SystemDatabaseTransactionHandler(eventBus, ctx.getWriteDb());
     }
     
     
@@ -105,7 +105,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
             return null;
         
         // decode internal ID for nested resource
-        var internalID = decodeID(ctx, id);
+        var internalID = decodeID(id);
         
         // check that resource ID valid
         if (!db.getCommandStore().containsKey(internalID))
@@ -127,12 +127,12 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
         // try to fetch command stream since it's needed to configure binding
         var dsID = ctx.getParentID();
         if (dsID != null)
-            contextData.dsInfo = db.getCommandStreamStore().get(new CommandStreamKey(dsID));
+            contextData.csInfo = db.getCommandStreamStore().get(new CommandStreamKey(dsID));
                 
         if (forReading)
         {
             // when ingesting commands, datastream should be known at this stage
-            Asserts.checkNotNull(contextData.dsInfo, ICommandStreamInfo.class);
+            Asserts.checkNotNull(contextData.csInfo, ICommandStreamInfo.class);
             
             // create transaction handler here so it can be reused multiple times
             contextData.streamID = dsID;
@@ -144,7 +144,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
             String foiArg = ctx.getParameter("foi");
             if (foiArg != null)
             {
-                var foiID = decodeID(ctx, foiArg);
+                var foiID = decodeID(foiArg);
                 if (!db.getFoiStore().contains(foiID))
                     throw ServiceErrors.badRequest("Invalid FOI ID");
                 contextData.foiId = foiID;
@@ -218,7 +218,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
             });*/
         
         // init event to obs converter
-        var dsInfo = ((CommandHandlerContextData)ctx.getData()).dsInfo;
+        var dsInfo = ((CommandHandlerContextData)ctx.getData()).csInfo;
         var streamHandler = ctx.getStreamHandler();
         
         // create subscriber
@@ -292,7 +292,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
     @Override
     protected BigId getKey(RequestContext ctx, String id) throws InvalidRequestException
     {
-        return decodeID(ctx, id);
+        return decodeID(id);
     }
     
     
@@ -391,23 +391,10 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
                 // serialize status info we received in response
                 if (ctx.getOutputStream() != null)
                 {
-                    if (status.getResult() != null)
-                    {
-                        // if there is a result, just write the result
-                        var resultHandler = (CommandResultHandler)subResources.get(CommandResultHandler.NAMES[0]);
-                        var resultBinding = resultHandler.getBinding(ctx, false);
-                        resultBinding.startCollection();
-                        resultBinding.serialize(null, status, false);
-                        resultBinding.endCollection(null);
-                    }
-                    else
-                    {
-                        // else write the complete status report
-                        var statusHandler = (CommandStatusHandler)subResources.get(CommandStatusHandler.NAMES[0]);
-                        ctx.setResponseFormat(ResourceFormat.JSON);
-                        var statusBinding = statusHandler.getBinding(ctx, false);
-                        statusBinding.serialize(null, status, false);
-                    }
+                    var statusHandler = (CommandStatusHandler)subResources.get(CommandStatusHandler.NAMES[0]);
+                    ctx.setResponseFormat(ResourceFormat.JSON);
+                    var statusBinding = statusHandler.getBinding(ctx, false);
+                    statusBinding.serialize(null, status, false);
                 }
                 
                 return status.getCommandID();

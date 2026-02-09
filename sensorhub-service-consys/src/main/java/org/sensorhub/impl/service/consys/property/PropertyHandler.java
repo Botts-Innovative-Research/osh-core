@@ -22,10 +22,9 @@ import org.sensorhub.api.datastore.DataStoreException;
 import org.sensorhub.api.datastore.property.IPropertyStore;
 import org.sensorhub.api.datastore.property.PropertyFilter;
 import org.sensorhub.api.datastore.property.PropertyKey;
-import org.sensorhub.api.event.IEventBus;
 import org.sensorhub.api.semantic.IDerivedProperty;
 import org.sensorhub.impl.service.consys.InvalidRequestException;
-import org.sensorhub.impl.service.consys.ObsSystemDbWrapper;
+import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
@@ -43,10 +42,10 @@ public class PropertyHandler extends ResourceHandler<PropertyKey, IDerivedProper
     final IProcedureDatabase db;
     
     
-    public PropertyHandler(IEventBus eventBus, ObsSystemDbWrapper db, ResourcePermissions permissions)
+    public PropertyHandler(HandlerContext ctx, ResourcePermissions permissions)
     {
-        super(db.getPropertyStore(), db.getPropertyIdEncoder(), db.getIdEncoders(), permissions);
-        this.db = db;
+        super(ctx.getPropertyStore(), ctx.getPropertyIdEncoder(), ctx, permissions);
+        this.db = ctx;
     }
     
     
@@ -105,7 +104,7 @@ public class PropertyHandler extends ResourceHandler<PropertyKey, IDerivedProper
     {
         try
         {
-            var decodedID = decodeID(ctx, id);
+            var decodedID = decodeID(id);
             return getKey(decodedID);
         }
         catch (InvalidRequestException e)

@@ -50,7 +50,7 @@ public abstract class AbstractModule<ConfigType extends ModuleConfig> implements
     protected ModuleSecurity securityHandler;
     protected final Object stateLock = new Object();
     protected boolean initAsync, startAsync, stopAsync;
-    protected Throwable lastError;
+    protected volatile Throwable lastError;
     protected String statusMsg;
     
 
@@ -193,7 +193,7 @@ public abstract class AbstractModule<ConfigType extends ModuleConfig> implements
             {
                 this.state = newState;
                 stateLock.notifyAll();
-                getLogger().info("Module {}", newState);
+                //getLogger().debug("Module {}", newState);
                 
                 if (eventHandler != null)
                 {
@@ -397,6 +397,10 @@ public abstract class AbstractModule<ConfigType extends ModuleConfig> implements
         {
             try
             {
+                // need to create logger on init because some modules access the logger
+                // class variable directly instead of calling getLogger() (should have made it private!)
+                getLogger();
+                
                 beforeInit();
                 doInit();
                 afterInit();
