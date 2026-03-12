@@ -51,12 +51,10 @@ import java.util.Set;
 // xmldatawriter?
 public class CotDataWriter extends XmlDataWriter {
     static final String COT_ERROR = "Error writing XML stream for ";
-    
-    protected XMLStreamWriter xmlWriter;
+
     protected String namespace;
     protected String prefix;
     protected Map<String, XmlDataWriter.IntegerWriter> countWriters = new HashMap<>();
-    private Strictness strictness = Strictness.LEGACY_STRICT;
     private boolean serializeNulls = true;
     private FormattingStyle formattingStyle;
     // These fields cache data derived from the formatting style, to avoid having to
@@ -91,12 +89,22 @@ public class CotDataWriter extends XmlDataWriter {
         xmlWriter.writeAttribute(var1, var2);
     }
 
-    public final void setStrictness(Strictness strictness) {
-        this.strictness = Objects.requireNonNull(strictness);
+    @Override
+    public void startStream(boolean addWrapper) throws IOException
+    {
+        try
+        {
+            if (addWrapper)
+                xmlWriter.writeStartElement("event");
+        }
+        catch (XMLStreamException e)
+        {
+            throw new IOException(e.getMessage(), e.getCause());
+        }
     }
 
-    public final Strictness getStrictness() {
-        return strictness;
+    public void writeCotEndElement() throws XMLStreamException {
+        xmlWriter.writeEndElement();
     }
 
     public final void setSerializeNulls(boolean serializeNulls) {
@@ -112,32 +120,32 @@ public class CotDataWriter extends XmlDataWriter {
         return serializeNulls;
     }
 
-    public final void setFormattingStyle(FormattingStyle formattingStyle) {
-        this.formattingStyle = Objects.requireNonNull(formattingStyle);
-
-        this.formattedComma = ",";
-        if (this.formattingStyle.usesSpaceAfterSeparators()) {
-            this.formattedColon = ": ";
-
-            // Only add space if no newline is written
-            if (this.formattingStyle.getNewline().isEmpty()) {
-                this.formattedComma = ", ";
-            }
-        } else {
-            this.formattedColon = ":";
-        }
-
-        this.usesEmptyNewlineAndIndent =
-                this.formattingStyle.getNewline().isEmpty() && this.formattingStyle.getIndent().isEmpty();
-    }
-
-
-    public final void setIndent(String indent) {
-        if (indent.isEmpty()) {
-            setFormattingStyle(FormattingStyle.COMPACT);
-        } else {
-            setFormattingStyle(FormattingStyle.PRETTY.withIndent(indent));
-        }
-    }
+//    public final void setFormattingStyle(FormattingStyle formattingStyle) {
+//        this.formattingStyle = Objects.requireNonNull(formattingStyle);
+//
+//        this.formattedComma = ",";
+//        if (this.formattingStyle.usesSpaceAfterSeparators()) {
+//            this.formattedColon = ": ";
+//
+//            // Only add space if no newline is written
+//            if (this.formattingStyle.getNewline().isEmpty()) {
+//                this.formattedComma = ", ";
+//            }
+//        } else {
+//            this.formattedColon = ":";
+//        }
+//
+//        this.usesEmptyNewlineAndIndent =
+//                this.formattingStyle.getNewline().isEmpty() && this.formattingStyle.getIndent().isEmpty();
+//    }
+//
+//
+//    public final void setIndent(String indent) {
+//        if (indent.isEmpty()) {
+//            setFormattingStyle(FormattingStyle.COMPACT);
+//        } else {
+//            setFormattingStyle(FormattingStyle.PRETTY.withIndent(indent));
+//        }
+//    }
 
 }

@@ -72,6 +72,8 @@ public class ObsBindingSweCommon extends ResourceBinding<BigId, IObsData>
                     ctx.setResponseContentType(ResourceFormat.TEXT_PLAIN.getMimeType());
                 else if (ctx.getFormat().equals(ResourceFormat.SWE_XML))
                     ctx.setResponseContentType(ResourceFormat.APPLI_XML.getMimeType());
+                else if (ctx.getFormat().equals(ResourceFormat.COT_XML))
+                    ctx.setResponseContentType(ResourceFormat.APPLI_XML.getMimeType());
                 else
                     ctx.setResponseContentType(ctx.getFormat().getMimeType());
             }

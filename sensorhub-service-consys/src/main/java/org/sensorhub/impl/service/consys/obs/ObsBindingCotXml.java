@@ -19,6 +19,8 @@ import com.google.common.collect.Sets;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
+import net.opengis.OgcPropertyList;
+import net.opengis.swe.v20.DataComponent;
 import org.sensorhub.api.common.BigId;
 import org.sensorhub.api.common.IdEncoders;
 import org.sensorhub.api.data.IDataStreamInfo;
@@ -68,8 +70,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
     ObsHandlerContextData contextData;
     IObsStore obsStore;
     XmlDataParser resultReader;
-    CotDataReader cotReader; // unused...
-    CotDataWriter cotWriter = new CotDataWriter();
     Map<BigId, AbstractDataWriter> resultWriters;
     DOMHelper dom;
     ScalarIndexer timeStampIndexer;
@@ -216,6 +216,27 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
         Set<Integer> locationComponents = new HashSet<>();
         var dataStream = this.obsStore.getDataStreams().get(new DataStreamKey(obs.getDataStreamID()));
 
+        Map<String, Object> fieldValues = new HashMap<>();
+        Map<String, String> locationValues = new HashMap<>();
+        Map<String, OffsetDateTime> dateFields = new HashMap<>();
+
+        OgcPropertyList<DataComponent> recordStruct = null;
+        AbstractDataBlock[] resultBlock = null;
+//        for (int i = 0; i < recordStruct.size() && i < resultBlock.length; i++) {
+//            String fieldName = recordStruct.get(i).getName();
+//            AbstractDataBlock fieldBlock = resultBlock[i];
+//
+////            if (fieldBlock != null) {
+////                if (locationBlock != null && locationBlock.getAtomCount() >= 2) {
+////                    var latName = component.getComponent(0).getName();
+////                    var latValue = locationBlock.getStringValue(0);
+////                    locationValues.put(latName, latValue);
+////                }
+////            }
+//
+//            String version = fieldValues.get("version").toString();
+//        }
+
         for (int i = 0; i < dataStream.getRecordStructure().getComponentCount(); i++) {
             var component = dataStream.getRecordStructure().getComponent(i);
             if (LOCATION_DEFINITIONS.contains(component.getDefinition())) {
@@ -227,12 +248,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
         var obsId = idEncoders.getObsIdEncoder().encodeID(key);
 
-        cotWriter.setOutput(os);
-
-        cotWriter.writeStartElement("event");
-        cotWriter.writeCotAttribute("version", "2.0");
-        cotWriter.writeCotAttribute("uid", obsId);
-
         double longitude = 0;
         double latitude = 0;
 
@@ -243,13 +258,18 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
             longitude = locationDataBlock.getDoubleValue(1);
         }
 
-        var recordStruct = ((DataRecordImpl) dataStream.getRecordStructure()).getFieldList();
+        recordStruct = ((DataRecordImpl) dataStream.getRecordStructure()).getFieldList();
 
-        var resultBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject();
-
-        cotWriter.writeCotStartElement("event");
+        resultBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject();
 
         int i = 0;
+
+        Map<String, String> unmatchedData = new HashMap<>();
+        Map<String, String> pointData = new HashMap<>();
+        Map<String, String> eventData = new HashMap<>();
+        Map<String, String> remarksData = new HashMap<>();
+
+        xmlWriter.writeCotAttribute("version", "2.0");
 
         for (AbstractDataBlock abstractResultBlock : resultBlock) {
             String value = abstractResultBlock.getStringValue();
@@ -258,49 +278,110 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
             OffsetDateTime timeResult = null;
 
             switch (fieldName) {
-                case "version":
-                    cotWriter.writeCotAttribute("version", value);
+                case "version": // event
+                    eventData.put("version", "2.0");
                     break;
-                case "type":
-                    cotWriter.writeCotAttribute("type", value);
+                case "type": // event
+                    eventData.put("type", value);
                     break;
-                case "uid":
-                    cotWriter.writeCotAttribute("uid", value);
+                case "uuid", "uid": // event
+                    eventData.put("uid", value);
                     break;
-                case "time":
+                case "time": // event
                     timeResult = abstractResultBlock.getDateTime();
-                    cotWriter.writeCotAttribute("time", timeResult.toString());
+                    eventData.put("time", timeResult.toString());
                     break;
-                case "start":
+                case "start": // event
                     timeResult = abstractResultBlock.getDateTime();
-                    cotWriter.writeCotAttribute("start time", timeResult.toString());
+                    eventData.put("start time", timeResult.toString());
                     break;
-                case "stale": // how would i do the plus 1 year here
-                    timeResult = abstractResultBlock.getDateTime();
-                    cotWriter.writeCotAttribute("stale time", timeResult.toString());
+                case "stale": // event
+                    timeResult = abstractResultBlock.getDateTime().plusYears(1);
+                    eventData.put("stale time", timeResult.toString());
                     break;
-                case "how":
-                    cotWriter.writeCotAttribute("how", value);
+                case "how": // event
+                    eventData.put("how", value);
                     break;
-                case "lat":
-                    cotWriter.writeCotAttribute("lon", value);
+                case "ce": // point
+                    pointData.put("ce", value);
                     break;
-                case "ce":
-                    cotWriter.writeCotAttribute("ce", value);
+                case "hae": // point
+                    pointData.put("hae", value);
                     break;
-                case "le":
-                    cotWriter.writeCotAttribute("le", value);
+                case "le": // point
+                    pointData.put("le", value);
                     break;
-                case "source":
-                    cotWriter.writeCotAttribute("source", value);
+                case "source": // remarks
+                    remarksData.put("source", value);
                     break;
+                case "location": // point
+                    var locationBlockCount = abstractResultBlock.getAtomCount();
+                    String lat, lon, alt;
+                    if (locationBlockCount == 2) {
+                        lat = resultBlock[i].getStringValue(0);
+                        lon = resultBlock[i].getStringValue(1);
+
+                        pointData.put("lat", lat);
+                        pointData.put("lon", lon);
+                        break;
+                    } else if (locationBlockCount == 3) {
+                        lat = resultBlock[i].getStringValue(0);
+                        lon = resultBlock[i].getStringValue(0);
+                        alt = resultBlock[i].getStringValue(0);
+
+                        pointData.put("lat", lat);
+                        pointData.put("lon", lon);
+                        pointData.put("alt", alt);
+                        break;
+                    } else {
+                        break;
+                    }
+                default:
+                    unmatchedData.put(fieldName, value);
             }
+            i++;
         }
 
-//        if (!(longitude == 0.0 && latitude == 0.0)) {
-//
-//        }
+        eventData.entrySet().forEach(entry -> {
+            try {
+                xmlWriter.writeCotAttribute(entry.getKey(), entry.getValue());
+            } catch (XMLStreamException e) {
+                throw new RuntimeException(e);
+            }
+        });
 
+        cotWriter.writeCotStartElement("detail");
+        unmatchedData.entrySet().forEach(entry -> {
+            try {
+                xmlWriter.writeCotAttribute(entry.getKey(), entry.getValue());
+            } catch (XMLStreamException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        cotWriter.writeCotStartElement("remarks");
+        remarksData.entrySet().forEach(entry -> {
+            try {
+                xmlWriter.writeCotAttribute(entry.getKey(), entry.getValue());
+            } catch (XMLStreamException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        cotWriter.writeCotEndElement();
+
+        cotWriter.writeCotEndElement();
+
+        cotWriter.writeCotStartElement("point");
+        pointData.entrySet().forEach(entry -> {
+            try {
+                xmlWriter.writeCotAttribute(entry.getKey(), entry.getValue());
+            } catch (XMLStreamException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        cotWriter.writeCotEndElement();
+
+        cotWriter.endStream();
     }
 
 
@@ -346,9 +427,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
     }
 
     protected XmlDataParser getSweCommonParser(IDataStreamInfo dsInfo, InputStream is) throws IOException {
-        //should be cotxmlparser... soon
-        // do i have to make a parser actually.....?
-
         // create XML SWE parser
         var sweParser = new XmlDataParser();
         sweParser.setDataComponents(dsInfo.getRecordStructure());
@@ -366,7 +444,6 @@ public class ObsBindingCotXml extends ResourceBindingCotXml<BigId, IObsData>
 
     @Override
     public void endCollection(Collection<ResourceLink> links) throws IOException, XMLStreamException {
-        cotWriter.close();
-        cotWriter.flush();
+        super.endCollection(links);
     }
 }

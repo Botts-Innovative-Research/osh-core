@@ -102,7 +102,7 @@ public class SWECommonUtils
                 {
                     return new TextEncodingImpl();
                 }
-                else if (format.isOneOf(ResourceFormat.SWE_XML, ResourceFormat.TEXT_XML))
+                else if (format.isOneOf(ResourceFormat.SWE_XML, ResourceFormat.TEXT_XML, ResourceFormat.COT_XML))
                 {
                     return new XMLEncodingImpl();
                 }
@@ -118,7 +118,7 @@ public class SWECommonUtils
             {
                 return defaultEncoding instanceof TextEncoding ? defaultEncoding : new TextEncodingImpl();
             } 
-            else if (format.isOneOf(ResourceFormat.SWE_XML, ResourceFormat.TEXT_XML))
+            else if (format.isOneOf(ResourceFormat.SWE_XML, ResourceFormat.TEXT_XML, ResourceFormat.COT_XML))
             {
                 return new XMLEncodingImpl();
             }
@@ -216,9 +216,8 @@ public class SWECommonUtils
             formatList.add(ResourceFormat.SWE_JSON.getMimeType());
             formatList.add(ResourceFormat.SWE_TEXT.getMimeType());
             formatList.add(ResourceFormat.SWE_XML.getMimeType());
+            formatList.add(ResourceFormat.COT_XML.getMimeType());
         }
-
-        formatList.add(ResourceFormat.COT_XML.getMimeType());
 
         formatList.add(ResourceFormat.GEO_JSON.getMimeType());
         

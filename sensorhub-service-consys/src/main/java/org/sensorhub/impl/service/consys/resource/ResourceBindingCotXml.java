@@ -14,16 +14,12 @@ Copyright (C) 2020 Sensia Software LLC. All Rights Reserved.
 
 package org.sensorhub.impl.service.consys.resource;
 
-import com.google.gson.Strictness;
-import com.google.gson.stream.JsonReader;
 import org.sensorhub.api.common.IdEncoders;
 import org.vast.swe.fast.CotDataReader;
 import org.vast.swe.fast.CotDataWriter;
 import org.vast.xml.XMLImplFinder;
 
 import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
@@ -102,7 +98,6 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
             throw new IOException("Error creating COT writer", e);
         }
     }
-
 
     @Override
     public V deserialize() throws IOException

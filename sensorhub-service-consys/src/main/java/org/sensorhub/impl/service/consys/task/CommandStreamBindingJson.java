@@ -287,6 +287,7 @@ public class CommandStreamBindingJson extends ResourceBindingJson<CommandStreamK
                 writer.value(ResourceFormat.SWE_JSON.getMimeType());
                 writer.value(ResourceFormat.SWE_TEXT.getMimeType());
                 writer.value(ResourceFormat.SWE_XML.getMimeType());
+                writer.value(ResourceFormat.COT_XML.getMimeType());
             }
             writer.value(ResourceFormat.SWE_BINARY.getMimeType());
             writer.endArray();

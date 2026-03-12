@@ -57,14 +57,6 @@ public class CotDataReader extends XmlDataParser {
     protected String namespace;
     protected String prefix;
     protected Map<String, XmlDataWriter.IntegerWriter> countWriters = new HashMap<>();
-    private Strictness strictness = Strictness.LEGACY_STRICT;
-    private boolean serializeNulls = true;
-    private FormattingStyle formattingStyle;
-    // These fields cache data derived from the formatting style, to avoid having to
-    // re-evaluate it every time something is written
-    private String formattedColon;
-    private String formattedComma;
-    private boolean usesEmptyNewlineAndIndent;
 
     public CotDataReader(Reader in) {
         this.in = Objects.requireNonNull(in, "in == null");
