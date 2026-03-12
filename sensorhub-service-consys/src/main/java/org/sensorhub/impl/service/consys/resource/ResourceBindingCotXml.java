@@ -42,8 +42,6 @@ public abstract class ResourceBindingCotXml<K, V> extends ResourceBinding<K, V>
     public static final String INVALID_XML_ERROR_MSG = "Invalid XML: ";
     public static final String MISSING_PROP_ERROR_MSG = "Missing property: ";
 
-//    protected final XMLStreamReader xmlReader;
-//    protected final XMLStreamWriter xmlWriter;
 
     protected final CotDataReader cotReader;
     protected final CotDataWriter cotWriter;

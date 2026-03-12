@@ -46,8 +46,6 @@ import java.util.Objects;
  * @since Dec 2, 2025
  */
 
-// xmlstreamreader
-// or xmldataparser?
 public class CotDataReader extends XmlDataParser {
     static final String COT_ERROR = "Error writing XML stream for ";
     private final Reader in;

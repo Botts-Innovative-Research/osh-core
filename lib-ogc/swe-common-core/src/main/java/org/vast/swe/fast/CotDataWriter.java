@@ -47,8 +47,6 @@ import java.util.Set;
  * @author Ashley Poteau
  * @since Oct 31, 2025
  */
-// xmlstreamwriter
-// xmldatawriter?
 public class CotDataWriter extends XmlDataWriter {
     static final String COT_ERROR = "Error writing XML stream for ";
 

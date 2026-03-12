@@ -38,10 +38,8 @@ public class ResourceFormat
     public static ResourceFormat SML_JSON = new ResourceFormat("application/sml+json", SHORT_SMLJSON);
     public static ResourceFormat SML_XML = new ResourceFormat("application/sml+xml", SHORT_SMLXML);
 
-    //BOW
     public static ResourceFormat GEO_JSON = new ResourceFormat("application/geo+json", SHORT_GEO_JSON);
 
-    //BOW (again)
     public static ResourceFormat COT_XML = new ResourceFormat("application/cot+xml", SHORT_COTXML);
 
     public static ResourceFormat OM_JSON = new ResourceFormat("application/om+json", SHORT_JSON);
