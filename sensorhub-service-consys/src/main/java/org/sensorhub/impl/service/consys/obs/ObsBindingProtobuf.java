@@ -37,6 +37,7 @@ import org.sensorhub.impl.service.consys.resource.ResourceLink;
 import org.sensorhub.utils.SWEDataUtils;
 import org.vast.cdm.common.DataStreamWriter;
 import org.vast.data.DataBlockMixed;
+import org.vast.data.DataRecordImpl;
 import org.vast.swe.BinaryDataWriter;
 import org.vast.swe.SWEConstants;
 import org.vast.swe.ScalarIndexer;
@@ -183,9 +184,20 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
 
         //protoWriter.writeProto(systemName, streamInfo);
 
+        var dataStream = this.obsStore.getDataStreams().get(new DataStreamKey(obs.getDataStreamID()));
+        var recordStruct = ((DataRecordImpl) dataStream.getRecordStructure()).getFieldList();
+        var resultBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject();
+
+        // map osh fields to proto fields
+        Map<String, String> resultValues = new HashMap<>();
+        for (int i = 0; i < resultBlock.length; i++) {
+            String fieldName = recordStruct.get(i).getName();
+            String value = resultBlock[i].getStringValue();
+            resultValues.put(fieldName, value);
+        }
+
         Set<Integer> locationComponents = new HashSet<>();
 
-        var dataStream = this.obsStore.getDataStreams().get(new DataStreamKey(obs.getDataStreamID()));
         for (int i = 0; i < dataStream.getRecordStructure().getComponentCount(); i++) {
             var component = dataStream.getRecordStructure().getComponent(i);
             if (LOCATION_DEFINITIONS.contains(component.getDefinition())) {
@@ -195,19 +207,7 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
             }
         }
 
-        double altitude = 0;
-        double longitude = 0;
-        double latitude = 0;
 
-        for (int index : locationComponents) {
-            var locationDataBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject()[index];
-            // You'll still need to check if these are real values and not null
-            latitude = locationDataBlock.getDoubleValue(0);
-            longitude = locationDataBlock.getDoubleValue(1);
-            altitude = locationDataBlock.getDoubleValue(2);
-        }
-
-        var obsId = idEncoders.getObsIdEncoder().encodeID(key);
 
         var resultWriter = resultWriters.computeIfAbsent(obs.getDataStreamID(),
                 k -> getSweCommonWriter(k, writer, ctx.getPropertyFilter()) );
@@ -218,29 +218,7 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
 
 
 
-        if (!(longitude == 0.0 && latitude == 0.0)) {
-            writer.beginObject();
-            writer.name("type").value("Feature");
 
-            writer.name("geometry");
-            writer.beginObject();
-            writer.name("type").value("Point");
-
-            writer.name("coordinates").value("[" + longitude + ", " + latitude + "]");
-
-            writer.name("properties");
-
-            writer.beginObject();
-            writer.name("name").value(obsName);
-            writer.name("id").value(obsId);
-            writer.name("phenomenonTime").value(obs.getPhenomenonTime().toString());
-            writer.name("resultTime").value(obs.getResultTime().toString());
-
-            writer.endObject();
-            writer.endObject();
-            writer.endObject();
-            writer.flush();
-        }
     }
 
 
