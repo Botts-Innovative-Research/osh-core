@@ -30,6 +30,7 @@ public class ResourceFormat
     public static String SHORT_HTML = "html";
     private static String SHORT_GEO_JSON = "geo_json";
     public static String SHORT_COTXML = "cot";
+    public static String SHORT_PROTOBUF = "proto";
     
     public static ResourceFormat HTML = new ResourceFormat("text/html", SHORT_HTML);
     public static ResourceFormat JSON = new ResourceFormat("application/json", SHORT_JSON);
@@ -41,6 +42,8 @@ public class ResourceFormat
     public static ResourceFormat GEO_JSON = new ResourceFormat("application/geo+json", SHORT_GEO_JSON);
 
     public static ResourceFormat COT_XML = new ResourceFormat("application/cot+xml", SHORT_COTXML);
+
+    public static ResourceFormat PROTOBUF = new ResourceFormat("application/protobuf", SHORT_PROTOBUF);
 
     public static ResourceFormat OM_JSON = new ResourceFormat("application/om+json", SHORT_JSON);
     public static ResourceFormat OM_XML = new ResourceFormat("application/om+xml");
@@ -80,6 +83,8 @@ public class ResourceFormat
             return ResourceFormat.GEOJSON;
         else if (SHORT_GEO_JSON.equals(format))
             return ResourceFormat.GEO_JSON;
+        else if (SHORT_PROTOBUF.equals(format))
+            return ResourceFormat.PROTOBUF;
         else if (SHORT_SMLJSON.equals(format))
             return ResourceFormat.SML_JSON;
         else if (SHORT_SMLXML.equals(format))

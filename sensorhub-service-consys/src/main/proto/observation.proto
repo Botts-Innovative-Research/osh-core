@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package obs;
+
+message OshObservation {
+
+    string id = 1;
+    string datastreamId = 2;
+    string foiId = 3;
+    string phenomenonTime = 4;
+    string resultTime = 5;
+
+    Results results = 6;
+
+}
+
+message Results {
+
+   map<string, string> values = 1; 
+
+}
