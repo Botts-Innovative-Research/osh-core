@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package obs;
 
+option java_package = "org.sensorhub.impl.service.consys.obs.proto";
+option java_outer_classname = "Observation";
+
 message OshObservation {
 
     string id = 1;

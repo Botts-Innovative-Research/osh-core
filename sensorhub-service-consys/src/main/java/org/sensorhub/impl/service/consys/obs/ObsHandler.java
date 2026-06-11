@@ -155,6 +155,8 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
             return new ObsBindingGeoJson(ctx, idEncoders, forReading, dataStore);
         else if (format.equals(ResourceFormat.COT_XML))
             return new ObsBindingCotXml(ctx, idEncoders, forReading, dataStore);
+        else if (format.equals(ResourceFormat.PROTOBUF))
+            return new ObsBindingProtobuf(ctx, idEncoders, forReading, dataStore);
         else
             return new ObsBindingSweCommon(ctx, idEncoders, forReading, dataStore);
     }

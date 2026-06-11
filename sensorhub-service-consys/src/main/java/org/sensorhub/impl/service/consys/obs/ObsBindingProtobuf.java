@@ -45,6 +45,9 @@ import org.vast.swe.fast.JsonDataParserGson;
 import org.vast.swe.fast.JsonDataWriterGson;
 import org.vast.swe.helper.GeoPosHelper;
 import org.vast.util.ReaderException;
+import org.sensorhub.impl.service.consys.obs.proto.Observation.OshObservation;
+import org.sensorhub.impl.service.consys.obs.proto.Observation.Results;
+import org.vast.data.DataRecordImpl;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -189,35 +192,29 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
         var resultBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject();
 
         // map osh fields to proto fields
-        Map<String, String> resultValues = new HashMap<>();
+        //Map<String, String> resultValues = new HashMap<>();
+        Results.Builder resultsBuilder = Results.newBuilder();
         for (int i = 0; i < resultBlock.length; i++) {
             String fieldName = recordStruct.get(i).getName();
             String value = resultBlock[i].getStringValue();
-            resultValues.put(fieldName, value);
+            resultsBuilder.putValues(fieldName, value);
         }
 
-        Set<Integer> locationComponents = new HashSet<>();
+        OshObservation protoObs = OshObservation.newBuilder()
+                .setId(idEncoders.getObsIdEncoder().encodeID(key))
+                .setDatastreamId(idEncoders.getDataStreamIdEncoder().encodeID(obs.getDataStreamID()))
+                .setFoiId(obs.getFoiID() != null
+                        ? idEncoders.getFoiIdEncoder().encodeID(obs.getFoiID())
+                        : "")
+                .setPhenomenonTime(String.valueOf(obs.getPhenomenonTime().toEpochMilli()))
+                .setResultTime(String.valueOf(obs.getResultTime().toEpochMilli()))
+                .setResults(resultsBuilder.build())
+                .build();
 
-        for (int i = 0; i < dataStream.getRecordStructure().getComponentCount(); i++) {
-            var component = dataStream.getRecordStructure().getComponent(i);
-            if (LOCATION_DEFINITIONS.contains(component.getDefinition())) {
-                // This is how we know we have location components in the data structure
-                // So we can save this and parse specifically the location components into GeoJSON
-                locationComponents.add(i);
-            }
-        }
-
-
-
-        var resultWriter = resultWriters.computeIfAbsent(obs.getDataStreamID(),
-                k -> getSweCommonWriter(k, writer, ctx.getPropertyFilter()) );
-
-        var obsRes = obs.getResult().toString();
-
-        var obsName = dataStream.getOutputName();
-
-
-
+        // serialize to bytes and write to output
+        byte[] bytes = protoObs.toByteArray();
+        ctx.getOutputStream().write(bytes);
+        ctx.getOutputStream().flush();
 
     }
 
