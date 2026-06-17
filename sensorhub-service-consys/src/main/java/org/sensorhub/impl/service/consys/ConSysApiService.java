@@ -262,7 +262,7 @@ public class ConSysApiService extends AbstractHttpServiceModule<ConSysApiService
         rootHandler.addSubResource(dataStreamHandler);
         systemsHandler.addSubResource(dataStreamHandler);
         sysMembersHandler.addSubResource(dataStreamHandler);
-        var dataSchemaHandler = new DataStreamSchemaHandler(handlerCtx, security.datastream_permissions);
+        var dataSchemaHandler = new DataStreamSchemaHandler(handlerCtx, security.datastream_permissions, customFormats);
         dataStreamHandler.addSubResource(dataSchemaHandler);
         
         // observations
@@ -282,11 +282,11 @@ public class ConSysApiService extends AbstractHttpServiceModule<ConSysApiService
         rootHandler.addSubResource(cmdStreamHandler);
         systemsHandler.addSubResource(cmdStreamHandler);
         sysMembersHandler.addSubResource(cmdStreamHandler);
-        var cmdSchemaHandler = new CommandStreamSchemaHandler(handlerCtx, security.commandstream_permissions);
+        var cmdSchemaHandler = new CommandStreamSchemaHandler(handlerCtx, security.commandstream_permissions, customFormats);
         cmdStreamHandler.addSubResource(cmdSchemaHandler);
-        
+
         // commands
-        var cmdHandler = new CommandHandler(handlerCtx, threadPool, security.command_permissions);
+        var cmdHandler = new CommandHandler(handlerCtx, threadPool, security.command_permissions, customFormats);
         cmdStreamHandler.addSubResource(cmdHandler);
         
         // command status
