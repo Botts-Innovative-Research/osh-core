@@ -278,7 +278,7 @@ public class ConSysApiService extends AbstractHttpServiceModule<ConSysApiService
         //foiHandler.addSubResource(obsStatsHandler);
         
         // command streams
-        var cmdStreamHandler = new CommandStreamHandler(handlerCtx, security.commandstream_permissions);
+        var cmdStreamHandler = new CommandStreamHandler(handlerCtx, security.commandstream_permissions, customFormats);
         rootHandler.addSubResource(cmdStreamHandler);
         systemsHandler.addSubResource(cmdStreamHandler);
         sysMembersHandler.addSubResource(cmdStreamHandler);
