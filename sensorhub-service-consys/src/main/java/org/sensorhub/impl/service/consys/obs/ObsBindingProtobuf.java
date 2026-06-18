@@ -265,9 +265,6 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
     public void startCollection() throws IOException
     {
         if (reader != null) {
-            // if we're reading, just skip to the items array
-            // calls to deserialize() will take it from there
-            // TODO generalize this to all bindings
             reader.beginObject();
             while (reader.hasNext()) {
                 var propName = reader.nextName();
@@ -277,14 +274,12 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
                     reader.skipValue();
             }
         }
-        else
-            startJsonCollection(writer);
     }
 
 
     @Override
     public void endCollection(Collection<ResourceLink> links) throws IOException
     {
-        endJsonCollection(writer, links);
+        //endJsonCollection(writer, links);
     }
 }
