@@ -54,11 +54,7 @@ import java.io.OutputStream;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.io.File;
 
-import org.sensorhub.utils.ProtoWriter;
-
-import javax.xml.stream.XMLStreamException;
 
 import static org.sensorhub.impl.service.consys.SWECommonUtils.OM_COMPONENTS_FILTER;
 
@@ -183,16 +179,12 @@ public class ObsBindingProtobuf extends ResourceBindingJson<BigId, IObsData>
     @Override
     public void serialize(BigId key, IObsData obs, boolean showLinks, JsonWriter writer) throws IOException {
 
-        ProtoWriter protoWriter = new ProtoWriter();
-
-        //protoWriter.writeProto(systemName, streamInfo);
 
         var dataStream = this.obsStore.getDataStreams().get(new DataStreamKey(obs.getDataStreamID()));
         var recordStruct = ((DataRecordImpl) dataStream.getRecordStructure()).getFieldList();
         var resultBlock = ((DataBlockMixed) obs.getResult()).getUnderlyingObject();
 
         // map osh fields to proto fields
-        //Map<String, String> resultValues = new HashMap<>();
         Results.Builder resultsBuilder = Results.newBuilder();
         for (int i = 0; i < resultBlock.length; i++) {
             String fieldName = recordStruct.get(i).getName();
