@@ -73,7 +73,7 @@ public class TCPCommProvider extends AbstractModule<TCPCommProviderConfig> imple
 
         int count = 0;
         int retryAttempts = this.config.connection.reconnectAttempts;
-//        boolean isRetrying = retryAttempts >= 0;
+        
         while(true) {
             try {
                 InetAddress addr = InetAddress.getByName(config.remoteHost);
