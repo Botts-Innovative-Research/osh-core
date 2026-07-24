@@ -109,6 +109,23 @@ public class DynamicGeomScanner extends DataBlockProcessor
         try
         {
             rootProcessor.process(data, 0);
+
+            // A geometry-bearing location Vector is a schema-level property, so hasGeom() is
+            // always true once the schema declares one. But an individual observation may carry
+            // a non-finite placeholder (e.g. NaN) when the platform has no known position for
+            // this record (position not yet acquired, non-WGS84/unknown location type, etc.).
+            // Emitting such coordinates would produce invalid GeoJSON like [NaN, NaN]. Treat any
+            // non-finite coordinate as "no geometry for this observation" — DynamicFoiBindingGeoJson
+            // already skips the geometry when getGeom() returns null.
+            if (posList != null)
+            {
+                for (double coord : posList)
+                {
+                    if (!Double.isFinite(coord))
+                        return null;
+                }
+            }
+
             return geom;
         }
         catch (IOException e)
