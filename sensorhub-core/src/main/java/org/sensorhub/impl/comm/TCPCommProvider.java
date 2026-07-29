@@ -73,7 +73,7 @@ public class TCPCommProvider extends AbstractModule<TCPCommProviderConfig> imple
 
         int count = 0;
         int retryAttempts = this.config.connection.reconnectAttempts;
-//        boolean isRetrying = retryAttempts >= 0;
+        
         while(true) {
             try {
                 InetAddress addr = InetAddress.getByName(config.remoteHost);
@@ -82,17 +82,15 @@ public class TCPCommProvider extends AbstractModule<TCPCommProviderConfig> imple
                     SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
                     socket = factory.createSocket(addr, config.remotePort);
                     ((SSLSocket) socket).startHandshake();
-                    is = socket.getInputStream();
-                    os = socket.getOutputStream();
                 } else {
                     SocketAddress endpoint = new InetSocketAddress(addr, config.remotePort);
                     socket = new Socket();
                     socket.connect(endpoint, this.config.connection.connectTimeout);
-                    is = socket.getInputStream();
-                    os = socket.getOutputStream();
-//                    isRetrying = false;
-                    break;
                 }
+
+                is = socket.getInputStream();
+                os = socket.getOutputStream();
+                break;
             } catch (IOException e) {
                 if(++count >= retryAttempts)
                     throw new SensorHubException("Cannot connect to remote host "
