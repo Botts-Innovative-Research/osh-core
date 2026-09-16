@@ -4,7 +4,7 @@ ext.details = 'Storage module backed by a H2 MVStore object database'
 dependencies {
   implementation project(':sensorhub-core')
   implementation project(':sensorhub-utils-kryo')
-  embeddedApi 'com.h2database:h2-mvstore:1.4.200'
+  embeddedApi 'com.h2database:h2-mvstore:2.5.250'
   embeddedApi 'org.apache.lucene:lucene-analyzers-common:8.11.2'
   testImplementation(testFixtures(project(':sensorhub-core')))
 }
@@ -33,4 +33,9 @@ ext.pom >>= {
       organizationUrl 'http://www.sensiasoftware.com' 
     }
   } 
+}
+
+// TEMP (H2 port): show all compiler errors; remove before merging
+tasks.withType(JavaCompile) {
+  options.compilerArgs << "-Xmaxerrs" << "2000"
 }
