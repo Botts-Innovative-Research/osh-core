@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.h2.mvstore.WriteBuffer;
-import org.h2.mvstore.type.DataType;
+import org.h2.mvstore.type.BasicDataType;
 import org.objenesis.strategy.StdInstantiatorStrategy;
 import org.sensorhub.impl.datastore.h2.H2Utils;
 import org.sensorhub.impl.serialization.kryo.VersionedSerializer;
@@ -36,7 +36,7 @@ import com.esotericsoftware.kryo.util.Pool;
 import com.google.common.collect.ImmutableMap;
 
 
-public class KryoDataType implements DataType
+public class KryoDataType extends BasicDataType<Object>
 {
     static Logger log = LoggerFactory.getLogger(KryoDataType.class);
     
@@ -176,8 +176,9 @@ public class KryoDataType implements DataType
 
 
     @Override
-    public void read(ByteBuffer buff, Object[] obj, int len, boolean key)
+    public void read(ByteBuffer buff, Object storage, int len)
     {
+        Object[] obj = cast(storage);
         KryoInstance kryoI = getReadKryo();
         for (int i = 0; i < len; i++)
             obj[i] = read(buff, kryoI);
@@ -207,8 +208,9 @@ public class KryoDataType implements DataType
 
 
     @Override
-    public void write(WriteBuffer buff, Object[] objects, int len, boolean key)
+    public void write(WriteBuffer buff, Object storage, int len)
     {
+        Object[] objects = cast(storage);
         for (int i = 0; i < len; i++)
         {
             var obj = objects[i];
@@ -279,6 +281,12 @@ public class KryoDataType implements DataType
     {
         // can be overriden by subclass if object is used as key
         return 0;
+    }
+
+    @Override
+    public Object[] createStorage(int size)
+    {
+        return new Object[size];
     }
 
 }
