@@ -49,7 +49,7 @@ public abstract class SpatialIndex<T extends IResource, K extends Comparable<?>>
     protected abstract SpatialKey getSpatialKey(K key, T resource);
     
     
-    public SpatialIndex(MVStore mvStore, String mapName, DataType valueType)
+    public SpatialIndex(MVStore mvStore, String mapName, DataType<? super K> valueType)
     {
         this.rTreeMap = mvStore.openMap(mapName, new MVRTreeMap.Builder<K>()
             .dimensions(3)

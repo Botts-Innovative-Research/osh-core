@@ -196,7 +196,7 @@ public abstract class MVBaseFeatureStoreImpl<V extends IFeature, VF extends Feat
     }
     
     
-    protected DataType getFeatureDataType(MVMap<String, Integer> kryoClassMap)
+    protected DataType<? super V> getFeatureDataType(MVMap<String, Integer> kryoClassMap)
     {
         return new FeatureDataType(kryoClassMap);
     }
