@@ -26,7 +26,7 @@ import org.h2.mvstore.type.BasicDataType;
  * @author Alex Robin
  * @date Oct 26, 2018
  */
-public class MVVarLongDataType extends BasicDataType<Object>
+public class MVVarLongDataType extends BasicDataType<Object> implements ObjectArrayDataType
 {
    
             
@@ -58,9 +58,4 @@ public class MVVarLongDataType extends BasicDataType<Object>
     }
     
 
-    @Override
-    public Object[] createStorage(int size)
-    {
-        return new Object[size];
-    }
 }

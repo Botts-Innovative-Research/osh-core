@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import org.h2.mvstore.ObjectArrayDataType;
 import org.h2.mvstore.WriteBuffer;
 import org.h2.mvstore.type.BasicDataType;
 import org.objenesis.strategy.StdInstantiatorStrategy;
@@ -36,7 +37,7 @@ import com.esotericsoftware.kryo.util.Pool;
 import com.google.common.collect.ImmutableMap;
 
 
-public class KryoDataType extends BasicDataType<Object>
+public class KryoDataType extends BasicDataType<Object> implements ObjectArrayDataType
 {
     static Logger log = LoggerFactory.getLogger(KryoDataType.class);
     
@@ -281,12 +282,6 @@ public class KryoDataType extends BasicDataType<Object>
     {
         // can be overriden by subclass if object is used as key
         return 0;
-    }
-
-    @Override
-    public Object[] createStorage(int size)
-    {
-        return new Object[size];
     }
 
 }
