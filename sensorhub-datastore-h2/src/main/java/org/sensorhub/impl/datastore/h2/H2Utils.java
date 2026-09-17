@@ -21,7 +21,8 @@ import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
 import org.h2.mvstore.WriteBuffer;
-import org.h2.mvstore.rtree.SpatialKey;
+import org.h2.mvstore.rtree.Spatial;
+import org.h2.mvstore.rtree.SpatialDataType;
 import org.sensorhub.api.datastore.TemporalFilter;
 import org.sensorhub.impl.datastore.h2.kryo.KryoDataType;
 import org.vast.util.Asserts;
@@ -40,12 +41,28 @@ public class H2Utils
     
     static final String DATASTORES_MAP_NAME = "@datastores";
     static final String GEOM_DIM_ERROR = "Only 2D and 3D geometries are supported";
+    private static final SpatialFactory SPATIAL_FACTORY = new SpatialFactory();
     
     public static final Range<Instant> ALL_TIMES_RANGE = Range.closed(Instant.MIN, Instant.MAX);
     public static final TemporalFilter ALL_TIMES_FILTER = new TemporalFilter.Builder()
                                                                     .withRange(Instant.MIN, Instant.MAX)
                                                                     .build();
     
+    private static final class SpatialFactory extends SpatialDataType
+    {
+        private SpatialFactory()
+        {
+            super(3);
+        }
+
+        @Override
+        public Spatial create(long id, float... minMax)
+        {
+            return super.create(id, minMax);
+        }
+    }
+
+
     static class Holder<T>
     {
         public T value;
@@ -219,7 +236,7 @@ public class H2Utils
     }
     
     
-    public static SpatialKey getBoundingRectangle(long id, AbstractGeometry geom)
+    public static Spatial getBoundingRectangle(long id, AbstractGeometry geom)
     {
         float[] minMaxCoords = null;
         int numDims = -1;
@@ -261,21 +278,21 @@ public class H2Utils
         }
         
         if (minMaxCoords != null)
-            return new SpatialKey(id, minMaxCoords);
+            return SPATIAL_FACTORY.create(id, minMaxCoords);
         else
             return null;
     }
     
     
-    public static SpatialKey getBoundingRectangle(long id, Geometry geom)
+    public static Spatial getBoundingRectangle(long id, Geometry geom)
     {
         return getBoundingRectangle(id, geom.getEnvelopeInternal());
     }
     
     
-    public static SpatialKey getBoundingRectangle(long id, Envelope env)
+    public static Spatial getBoundingRectangle(long id, Envelope env)
     {
-        return new SpatialKey(id,
+        return SPATIAL_FACTORY.create(id,
             Math.nextDown((float)env.getMinX()),
             Math.nextUp((float)env.getMaxX()),
             Math.nextDown((float)env.getMinY()),
