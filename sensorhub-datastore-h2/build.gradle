@@ -34,8 +34,3 @@ ext.pom >>= {
     }
   } 
 }
-
-// TEMP (H2 port): show all compiler errors; remove before merging
-tasks.withType(JavaCompile) {
-  options.compilerArgs << "-Xmaxerrs" << "2000"
-}
