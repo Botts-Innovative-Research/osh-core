@@ -82,7 +82,7 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
     {
         try
         {
-            MVStore.Builder builder = new MVStore.Builder().fileName(config.storagePath);
+            MVStore.Builder builder = new MVStore.Builder();
             builder.backgroundExceptionHandler((t, e) -> {
                 getLogger().error("Error in H2 background thread {}", t.getName(), e);
             });
@@ -102,8 +102,7 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
             if (config.useCompression)
                 builder.compress();
             
-            mvStore = builder.open();
-            mvStore.setAutoCommitDelay(config.autoCommitPeriod*1000);
+            mvStore = H2Utils.openMVStore(config.storagePath, builder, config.autoCommitPeriod*1000);
             mvStore.setVersionsToKeep(0);
             
             var idScope = getDatabaseNum() != null ? getDatabaseNum() : 0;
@@ -177,14 +176,15 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
     @Override
     protected void doStop() throws SensorHubException
     {
-        if (mvStore != null) 
-        {
-            // must call commit first to make sure kryo persistent class resolver
-            // is updated before we serialize it again in close
-            mvStore.commit();
-            mvStore.close();
-            mvStore = null;
-        }
+        // Startup may have rejected the file before acquiring a compatible store.
+        if (mvStore == null)
+            return;
+
+        // must call commit first to make sure kryo persistent class resolver
+        // is updated before we serialize it again in close
+        mvStore.commit();
+        mvStore.close();
+        mvStore = null;
         
         // log store info if debug is enabled
         if (config.printDebugInfoOnClose && getLogger().isDebugEnabled() && new File(config.storagePath).exists())

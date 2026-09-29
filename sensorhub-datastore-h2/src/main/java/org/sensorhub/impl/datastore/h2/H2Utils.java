@@ -14,15 +14,21 @@ Copyright (C) 2020 Sensia Software LLC. All Rights Reserved.
 
 package org.sensorhub.impl.datastore.h2;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Map;
+import org.h2.engine.Constants;
 import org.h2.mvstore.DataUtils;
 import org.h2.mvstore.MVMap;
 import org.h2.mvstore.MVStore;
+import org.h2.mvstore.MVStoreException;
 import org.h2.mvstore.WriteBuffer;
 import org.h2.mvstore.rtree.Spatial;
 import org.h2.mvstore.rtree.SpatialDataType;
+import org.h2.mvstore.type.StringDataType;
+import org.sensorhub.api.datastore.DataStoreException;
 import org.sensorhub.api.datastore.TemporalFilter;
 import org.sensorhub.impl.datastore.h2.kryo.KryoDataType;
 import org.vast.util.Asserts;
@@ -38,6 +44,12 @@ import net.opengis.gml.v32.Polygon;
 public class H2Utils
 {
     public static final int CURRENT_VERSION = 5;
+
+    // Compatibility bounds are deliberate, not derived from the running H2 version.
+    static final String MIN_SUPPORTED_H2_VERSION = "2.5.250";
+    static final String MAX_SUPPORTED_H2_VERSION = "2.5.250";
+    static final String DATABASE_MAP_NAME = "@database";
+    static final String H2_VERSION_KEY = "h2.version";
     
     static final String DATASTORES_MAP_NAME = "@datastores";
     static final String GEOM_DIM_ERROR = "Only 2D and 3D geometries are supported";
@@ -79,6 +91,95 @@ public class H2Utils
                 kryo.register(MVDataStoreInfo.class, 20);
             };
         }
+    }
+
+
+    /**
+     * Opens a database and checks its H2 version before any application maps are
+     * opened. Missing metadata in an existing file requires migration.
+     * @param storagePath database file path
+     * @param builder storage options (the file name and autocommit delay are set here)
+     * @param autoCommitDelay autocommit delay in milliseconds after validation
+     * @return the compatible store; the caller is responsible for closing it
+     * @throws DataStoreException if the file format or version is unsupported
+     */
+    public static MVStore openMVStore(String storagePath, MVStore.Builder builder, int autoCommitDelay)
+        throws DataStoreException
+    {
+        var file = new File(storagePath);
+        boolean newFile = !file.exists() || file.length() == 0;
+        MVStore store;
+        try
+        {
+            store = builder.fileName(storagePath).autoCommitDisabled().open();
+        }
+        catch (MVStoreException e)
+        {
+            if (e.getErrorCode() == DataUtils.ERROR_UNSUPPORTED_FORMAT)
+                throw new DataStoreException("Unsupported H2 file format: " + storagePath, e);
+            throw e;
+        }
+
+        boolean compatible = false;
+        try
+        {
+            var metadataBuilder = new MVMap.Builder<String, String>()
+                .keyType(StringDataType.INSTANCE)
+                .valueType(StringDataType.INSTANCE);
+            if (newFile)
+            {
+                store.openMap(DATABASE_MAP_NAME, metadataBuilder).put(H2_VERSION_KEY, Constants.VERSION);
+                store.commit();
+            }
+            else
+            {
+                String version = store.hasMap(DATABASE_MAP_NAME)
+                    ? store.openMap(DATABASE_MAP_NAME, metadataBuilder).get(H2_VERSION_KEY) : null;
+                if (version == null)
+                    migrateDatabase(storagePath, null);
+
+                var components = parseH2Version(version);
+                if (Arrays.compare(components, parseH2Version(MIN_SUPPORTED_H2_VERSION)) < 0)
+                    migrateDatabase(storagePath, version);
+                if (Arrays.compare(components, parseH2Version(MAX_SUPPORTED_H2_VERSION)) > 0)
+                    throw new DataStoreException("Unsupported H2 database version " + version +
+                        " in " + storagePath + "; supported range is " + MIN_SUPPORTED_H2_VERSION +
+                        " to " + MAX_SUPPORTED_H2_VERSION);
+            }
+
+            store.setAutoCommitDelay(autoCommitDelay);
+            compatible = true;
+            return store;
+        }
+        finally
+        {
+            if (!compatible)
+                store.closeImmediately();
+        }
+    }
+
+
+    private static int[] parseH2Version(String version) throws DataStoreException
+    {
+        if (version == null || !version.matches("[0-9]+\\.[0-9]+\\.[0-9]+"))
+            throw new DataStoreException("Invalid H2 database version: " + version);
+        try
+        {
+            return Arrays.stream(version.split("\\.")).mapToInt(Integer::parseInt).toArray();
+        }
+        catch (NumberFormatException e)
+        {
+            throw new DataStoreException("Invalid H2 database version: " + version, e);
+        }
+    }
+
+
+    private static void migrateDatabase(String storagePath, String sourceVersion) throws DataStoreException
+    {
+        // Migration of legacy files is not part of this change; files that need it are rejected here.
+        throw new DataStoreException("Database requires migration: " + storagePath +
+            " (H2 version " + (sourceVersion == null ? "missing" : sourceVersion) +
+            "; supported range is " + MIN_SUPPORTED_H2_VERSION + " to " + MAX_SUPPORTED_H2_VERSION + ")");
     }
     
     

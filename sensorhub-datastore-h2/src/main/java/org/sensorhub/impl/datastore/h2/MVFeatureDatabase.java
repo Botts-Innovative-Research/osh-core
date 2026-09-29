@@ -49,7 +49,7 @@ public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> i
             if (!FileUtils.isSafeFilePath(config.storagePath))
                 throw new DataStoreException("Storage path contains illegal characters: " + config.storagePath);
             
-            MVStore.Builder builder = new MVStore.Builder().fileName(config.storagePath);
+            MVStore.Builder builder = new MVStore.Builder();
             
             if (config.readOnly)
                 builder.readOnly();
@@ -63,8 +63,7 @@ public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> i
             if (config.useCompression)
                 builder.compress();
             
-            mvStore = builder.open();
-            mvStore.setAutoCommitDelay(config.autoCommitPeriod*1000);
+            mvStore = H2Utils.openMVStore(config.storagePath, builder, config.autoCommitPeriod*1000);
             mvStore.setVersionsToKeep(0);
             
             // open feature store
