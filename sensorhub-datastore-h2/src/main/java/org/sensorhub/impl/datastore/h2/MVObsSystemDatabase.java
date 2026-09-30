@@ -15,6 +15,7 @@ Copyright (C) 2020 Sensia Software LLC. All Rights Reserved.
 package org.sensorhub.impl.datastore.h2;
 
 import java.io.File;
+import java.nio.file.Paths;
 import java.io.StringWriter;
 import java.util.concurrent.Callable;
 import org.h2.mvstore.MVStore;
@@ -33,6 +34,7 @@ import org.sensorhub.api.datastore.property.IPropertyStore;
 import org.sensorhub.api.datastore.system.ISystemDescStore;
 import org.sensorhub.impl.module.AbstractModule;
 import org.sensorhub.utils.FileUtils;
+import org.sensorhub.impl.datastore.h2.migrate.Migrator;
 
 
 /**
@@ -102,6 +104,9 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
             if (config.useCompression)
                 builder.compress();
             
+            if (config.autoMigrate && !config.readOnly)
+                Migrator.migrateIfNeeded(Paths.get(config.storagePath), config.backupOnMigrate, msg -> getLogger().info(msg));
+
             mvStore = H2Utils.openMVStore(config.storagePath, builder, config.autoCommitPeriod*1000);
             mvStore.setVersionsToKeep(0);
             
@@ -149,6 +154,12 @@ public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfi
             obsStore.linkTo(foiStore);
             obsStore.getDataStreams().linkTo(sysStore);
             cmdStore.getCommandStreams().linkTo(sysStore);
+        }
+        catch (DatabaseMigrationRequiredException e)
+        {
+            // one plain line for the operator, in addition to the module error state
+            getLogger().error("Cannot open database file: {}", e.getMessage());
+            throw e;
         }
         catch (Exception e)
         {
