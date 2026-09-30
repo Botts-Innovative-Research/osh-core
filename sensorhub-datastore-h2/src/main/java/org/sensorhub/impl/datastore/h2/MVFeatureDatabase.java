@@ -34,7 +34,7 @@ import org.sensorhub.utils.FileUtils;
  */
 public class MVFeatureDatabase extends AbstractModule<MVFeatureDatabaseConfig> implements IFeatureDatabase
 {
-    final static String FEATURE_STORE_NAME = "feature_store";
+    public final static String FEATURE_STORE_NAME = "feature_store";
     
     MVStore mvStore;
     MVFeatureStoreImpl featureStore;

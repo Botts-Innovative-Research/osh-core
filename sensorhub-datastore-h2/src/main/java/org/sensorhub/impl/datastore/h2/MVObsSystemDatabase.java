@@ -47,14 +47,14 @@ import org.sensorhub.utils.FileUtils;
  */
 public class MVObsSystemDatabase extends AbstractModule<MVObsSystemDatabaseConfig> implements IObsSystemDatabase, IProcedureDatabase, IObsSystemDatabaseModule<MVObsSystemDatabaseConfig>
 {
-    final static String KRYO_CLASS_MAP_NAME = "kryo_class_map";
-    final static String SYSTEM_STORE_NAME = "sys_store";
-    final static String DEPL_STORE_NAME = "depl_store";
-    final static String FOI_STORE_NAME = "foi_store";
-    final static String OBS_STORE_NAME = "obs_store";
-    final static String CMD_STORE_NAME = "cmd_store";
-    final static String PROC_STORE_NAME = "proc_store";
-    final static String PROP_STORE_NAME = "prop_store";
+    public final static String KRYO_CLASS_MAP_NAME = "kryo_class_map";
+    public final static String SYSTEM_STORE_NAME = "sys_store";
+    public final static String DEPL_STORE_NAME = "depl_store";
+    public final static String FOI_STORE_NAME = "foi_store";
+    public final static String OBS_STORE_NAME = "obs_store";
+    public final static String CMD_STORE_NAME = "cmd_store";
+    public final static String PROC_STORE_NAME = "proc_store";
+    public final static String PROP_STORE_NAME = "prop_store";
     
     MVStore mvStore;
     MVSystemStoreImpl sysStore;

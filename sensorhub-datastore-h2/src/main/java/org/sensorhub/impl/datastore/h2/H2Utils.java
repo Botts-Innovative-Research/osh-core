@@ -48,10 +48,10 @@ public class H2Utils
     // Compatibility bounds are deliberate, not derived from the running H2 version.
     static final String MIN_SUPPORTED_H2_VERSION = "2.5.250";
     static final String MAX_SUPPORTED_H2_VERSION = "2.5.250";
-    static final String DATABASE_MAP_NAME = "@database";
-    static final String H2_VERSION_KEY = "h2.version";
+    public static final String DATABASE_MAP_NAME = "@database";
+    public static final String H2_VERSION_KEY = "h2.version";
     
-    static final String DATASTORES_MAP_NAME = "@datastores";
+    public static final String DATASTORES_MAP_NAME = "@datastores";
     static final String GEOM_DIM_ERROR = "Only 2D and 3D geometries are supported";
     private static final SpatialFactory SPATIAL_FACTORY = new SpatialFactory();
     
@@ -116,7 +116,8 @@ public class H2Utils
         catch (MVStoreException e)
         {
             if (e.getErrorCode() == DataUtils.ERROR_UNSUPPORTED_FORMAT)
-                throw new DataStoreException("Unsupported H2 file format: " + storagePath, e);
+                throw new DatabaseMigrationRequiredException("Unsupported H2 file format: " + storagePath +
+                    " (written by an older H2 version). " + migrationHint(storagePath), e);
             throw e;
         }
 
@@ -176,10 +177,20 @@ public class H2Utils
 
     private static void migrateDatabase(String storagePath, String sourceVersion) throws DataStoreException
     {
-        // Migration of legacy files is not part of this change; files that need it are rejected here.
-        throw new DataStoreException("Database requires migration: " + storagePath +
+        // Migration (backup, interim copy, verification, atomic swap) is implemented in
+        // org.sensorhub.impl.datastore.h2.migrate. It runs at startup only when the database
+        // config enables autoMigrate; otherwise the operator runs it from the command line.
+        throw new DatabaseMigrationRequiredException("Database requires migration: " + storagePath +
             " (H2 version " + (sourceVersion == null ? "missing" : sourceVersion) +
-            "; supported range is " + MIN_SUPPORTED_H2_VERSION + " to " + MAX_SUPPORTED_H2_VERSION + ")");
+            "; supported range is " + MIN_SUPPORTED_H2_VERSION + " to " + MAX_SUPPORTED_H2_VERSION + "). " +
+            migrationHint(storagePath));
+    }
+
+
+    static String migrationHint(String storagePath)
+    {
+        return "Enable 'autoMigrate' in the database module config to migrate it at startup, " +
+            "or stop the node and run: java -cp 'lib/*' org.sensorhub.impl.datastore.h2.migrate.H2Migrate " + storagePath;
     }
     
     
