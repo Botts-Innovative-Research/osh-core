@@ -192,9 +192,11 @@ public class KryoDataType extends BasicDataType<Object> implements ObjectArrayDa
         Kryo kryo = kryoI.kryo;
         Input input = kryoI.input;
         
-        input.setBuffer(buff.array(), buff.position(), buff.remaining());
+        // H2 2.x passes slices of an unsaved chunk's buffer, so the page may not start at array index 0
+        int offset = buff.arrayOffset();
+        input.setBuffer(buff.array(), offset + buff.position(), buff.remaining());
         Object obj = kryo.readClassAndObject(input);
-        buff.position(input.position());
+        buff.position(input.position() - offset);
         
         return obj;
     }
