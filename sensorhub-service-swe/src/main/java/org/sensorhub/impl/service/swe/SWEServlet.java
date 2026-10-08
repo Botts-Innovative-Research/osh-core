@@ -26,14 +26,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.xml.namespace.QName;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import org.eclipse.jetty.websocket.api.WebSocketBehavior;
 import org.eclipse.jetty.websocket.api.WebSocketListener;
-import org.eclipse.jetty.websocket.api.WebSocketPolicy;
-import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
-import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
-import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse;
-import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
-import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
+import org.eclipse.jetty.websocket.server.JettyWebSocketServerContainer;
 import org.sensorhub.api.ISensorHub;
 import org.sensorhub.api.database.IObsSystemDatabase;
 import org.sensorhub.api.datastore.DataStoreException;
@@ -86,9 +80,9 @@ public abstract class SWEServlet extends OWSServlet
     protected final transient SystemDatabaseTransactionHandler transactionHandler;
     
     protected final transient AtomicLong lastGetCapsRequest = new AtomicLong();
-    protected transient WebSocketServletFactory wsFactory;
-    
-    
+    protected transient JettyWebSocketServerContainer wsContainer;
+
+
     protected SWEServlet(SWEService<?> service, OWSUtils owsUtils, Logger log)
     {
         super(owsUtils, log);
@@ -105,6 +99,12 @@ public abstract class SWEServlet extends OWSServlet
     public abstract OWSServiceCapabilities updateCapabilities();
     public abstract OWSServiceCapabilities getCapabilities();
 
+
+    protected boolean isWebSocketUpgradeRequest(HttpServletRequest req)
+    {
+        return "GET".equalsIgnoreCase(req.getMethod()) &&
+                "websocket".equalsIgnoreCase(req.getHeader("Upgrade"));
+    }
 
     protected void handleRequest(GetCapabilitiesRequest request) throws IOException, OWSException
     {
@@ -352,13 +352,16 @@ public abstract class SWEServlet extends OWSServlet
 
     protected void acceptWebSocket(final OWSRequest owsReq, final WebSocketListener socket) throws IOException
     {
-        wsFactory.acceptWebSocket(new WebSocketCreator() {
-            @Override
-            public Object createWebSocket(ServletUpgradeRequest req, ServletUpgradeResponse resp)
-            {
-                return socket;
-            }
-        }, owsReq.getHttpRequest(), owsReq.getHttpResponse());
+        if (wsContainer == null)
+            throw new IOException("WebSocket support is not initialized on this servlet context");
+
+        boolean upgraded = wsContainer.upgrade(
+                (upgradeReq, upgradeResp) -> socket,
+                owsReq.getHttpRequest(),
+                owsReq.getHttpResponse());
+
+        if (!upgraded)
+            throw new IOException("WebSocket upgrade failed");
     }
     
     
@@ -417,16 +420,13 @@ public abstract class SWEServlet extends OWSServlet
     {
         super.init(config);
 
-        // create websocket factory
-        try
+        // get websocket container (lifecycle is managed by Jetty, no need to start/stop it)
+        wsContainer = JettyWebSocketServerContainer.getContainer(getServletContext());
+        if (wsContainer == null)
         {
-            WebSocketPolicy wsPolicy = new WebSocketPolicy(WebSocketBehavior.SERVER);
-            wsFactory = new WebSocketServerFactory(getServletContext(), wsPolicy);
-            wsFactory.start();
-        }
-        catch (Exception e)
-        {
-            throw new ServletException("Cannot initialize websocket factory", e);
+            throw new ServletException("WebSocket container not available. " +
+                    "JettyWebSocketServletContainerInitializer.configure() must be called " +
+                    "on the ServletContextHandler before the server is started");
         }
     }
 
@@ -434,15 +434,9 @@ public abstract class SWEServlet extends OWSServlet
     @Override
     public void destroy()
     {
-        // stop websocket factory
-        try
-        {
-            wsFactory.stop();
-        }
-        catch (Exception e)
-        {
-            log.error("Cannot stop websocket factory", e);
-        }
+        // nothing to stop: websocket container is stopped together with the servlet context
+        wsContainer = null;
+        super.destroy();
     }
     
 

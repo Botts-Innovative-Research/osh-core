@@ -3,7 +3,8 @@ ext.details = 'Implementation of OGC SWE standard interfaces as OSH services and
 
 dependencies {
   implementation project(':sensorhub-core')
-  
+  embeddedApi 'org.eclipse.jetty.websocket:websocket-jetty-client:10.0.26'
+
   embeddedApi(project(':ogc-services-sos')) {
     // exclude from embedded jars, already provided by sensorhub-core
     exclude group: 'org.vast.opengis', module: 'swe-common-om' 

@@ -14,6 +14,8 @@ Copyright (C) 2012-2016 Sensia Software LLC. All Rights Reserved.
 
 package org.sensorhub.impl.service;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.security.Principal;
 import org.eclipse.jetty.websocket.api.Session;
 import org.slf4j.Logger;
@@ -54,7 +56,10 @@ public class WebSocketUtils
     {
         if (log.isDebugEnabled())
         {
-            String remoteIp = session.getRemoteAddress().getAddress().getHostAddress();
+            SocketAddress addr = session.getRemoteAddress();
+            String remoteIp = (addr instanceof InetSocketAddress)
+                    ? ((InetSocketAddress) addr).getAddress().getHostAddress()
+                    : String.valueOf(addr);
             Principal user = session.getUpgradeRequest().getUserPrincipal();
             String userID = user != null ? user.getName() : "anonymous";
             log.debug(CONNECT_MSG, getSessionID(session), remoteIp, userID);

@@ -158,7 +158,7 @@ public class SPSServlet extends SWEServlet
         OWSRequest owsRequest = super.parseRequest(req, resp, isXmlRequest);
 
         // detect websocket request
-        if (wsFactory.isUpgradeRequest(req, resp))
+        if (isWebSocketUpgradeRequest(req))
         {
             if (owsRequest instanceof ConnectTaskingRequest)
                 owsRequest.getExtensions().put(EXT_WS, true);
