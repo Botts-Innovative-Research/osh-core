@@ -248,7 +248,7 @@ public class SOSServlet extends SWEServlet
             securityHandler.checkPermission(securityHandler.rootPerm);
             
             // check if we have an upgrade request for websockets
-            if (wsFactory.isUpgradeRequest(req, resp))
+            if (isWebSocketUpgradeRequest(req))
             {
                 // parse request
                 try
@@ -293,8 +293,7 @@ public class SOSServlet extends SWEServlet
             securityHandler.clearCurrentUser();
         }
     }
-    
-    
+
     @Override
     public void handleRequest(OWSRequest request) throws IOException, OWSException
     {

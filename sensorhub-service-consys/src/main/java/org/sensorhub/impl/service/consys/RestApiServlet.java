@@ -31,13 +31,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.io.EofException;
-import org.eclipse.jetty.websocket.api.WebSocketBehavior;
-import org.eclipse.jetty.websocket.api.WebSocketPolicy;
-import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
-import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
-import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse;
-import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
-import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
+import org.eclipse.jetty.websocket.server.JettyWebSocketServerContainer;
 import org.sensorhub.api.security.IPermission;
 import org.sensorhub.api.security.ISecurityManager;
 import org.sensorhub.impl.service.consys.resource.IResourceHandler;
@@ -61,9 +55,9 @@ public abstract class RestApiServlet extends HttpServlet
     protected final ScheduledExecutorService threadPool;
     protected final Logger log;
     protected final String rootUrl;
-    protected WebSocketServletFactory wsFactory;
-    
-    
+    protected JettyWebSocketServerContainer wsContainer;
+
+
     public static class ResourcePermissions
     {
         public IPermission get;
@@ -95,16 +89,13 @@ public abstract class RestApiServlet extends HttpServlet
     {
         super.init(config);
 
-        // create websocket factory
-        try
+        // get websocket container (lifecycle is managed by Jetty, no need to start/stop it)
+        wsContainer = JettyWebSocketServerContainer.getContainer(getServletContext());
+        if (wsContainer == null)
         {
-            WebSocketPolicy wsPolicy = new WebSocketPolicy(WebSocketBehavior.SERVER);
-            wsFactory = new WebSocketServerFactory(getServletContext(), wsPolicy);
-            wsFactory.start();
-        }
-        catch (Exception e)
-        {
-            throw new ServletException("Cannot initialize websocket factory", e);
+            throw new ServletException("WebSocket container not available. " +
+                    "JettyWebSocketServletContainerInitializer.configure() must be called " +
+                    "on the ServletContextHandler before the server is started");
         }
     }
 
@@ -112,16 +103,9 @@ public abstract class RestApiServlet extends HttpServlet
     @Override
     public void destroy()
     {
-        // destroy websocket factory
-        try
-        {
-            if (wsFactory != null)
-                wsFactory.stop();
-        }
-        catch (Exception e)
-        {
-            log.error("Cannot stop websocket factory", e);
-        }
+        // nothing to do: websocket container is stopped together with the servlet context
+        wsContainer = null;
+        super.destroy();
     }
     
     
@@ -376,12 +360,18 @@ public abstract class RestApiServlet extends HttpServlet
             sendError(SC_INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MSG, req, resp);
         }
     }
-    
-    
+
+
+    protected boolean isWebSocketUpgradeRequest(HttpServletRequest req)
+    {
+        return "websocket".equalsIgnoreCase(req.getHeader("Upgrade"));
+    }
+
+
     protected RequestContext createContext(HttpServletRequest req, HttpServletResponse resp) throws IOException
     {
         // check if we have an upgrade request for websockets
-        if (wsFactory.isUpgradeRequest(req, resp))
+        if (wsContainer != null && isWebSocketUpgradeRequest(req))
         {
             /*if (req.getSubProtocols().contains("ingest"))
             {
@@ -392,21 +382,14 @@ public abstract class RestApiServlet extends HttpServlet
             else
             }*/
             var ws = new WebSocketOut(getLogger());
-            
-            wsFactory.acceptWebSocket(new WebSocketCreator() {
-                @Override
-                public Object createWebSocket(ServletUpgradeRequest req, ServletUpgradeResponse resp)
-                {
-                    return ws;
-                }
-            }, req, resp);
-            
-            return new RequestContext(this, req, resp, ws);
+
+            boolean upgraded = wsContainer.upgrade((upgradeReq, upgradeResp) -> ws, req, resp);
+            if (upgraded)
+                return new RequestContext(this, req, resp, ws);
         }
         
         // else just handle as regular HTTP request
-        else
-            return new RequestContext(this, req, resp);
+        return new RequestContext(this, req, resp);
     }
     
     
@@ -441,7 +424,7 @@ public abstract class RestApiServlet extends HttpServlet
         }
         
         // detect websocket upgrade
-        if ("websocket".equalsIgnoreCase(req.getHeader("Upgrade")))
+        if (isWebSocketUpgradeRequest(req))
             method += "/Websocket";
         
         // append decoded request if any
@@ -457,8 +440,8 @@ public abstract class RestApiServlet extends HttpServlet
         else
             log.info(LOG_REQUEST_MSG, method, url, query, ip, user);
     }
-    
-    
+
+
     /*public void sendError(int code, String mimeType, HttpServletResponse resp)
     {
         sendError(code, null, mimeType, resp);
