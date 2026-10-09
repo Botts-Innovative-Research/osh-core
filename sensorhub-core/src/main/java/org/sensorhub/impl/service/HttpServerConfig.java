@@ -31,7 +31,7 @@ public class HttpServerConfig extends ModuleConfig
 {
     public enum AuthMethod
     {
-        NONE, BASIC, DIGEST, CERT,
+        NONE, BASIC, CERT,
         EXTERNAL // provided by external module
     }
     

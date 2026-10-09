@@ -33,7 +33,6 @@ import org.eclipse.jetty.security.ConstraintMapping;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
 import org.eclipse.jetty.security.authentication.BasicAuthenticator;
 import org.eclipse.jetty.security.authentication.ClientCertAuthenticator;
-import org.eclipse.jetty.security.authentication.DigestAuthenticator;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
@@ -202,8 +201,6 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                     
                     if (config.authMethod == AuthMethod.BASIC)
                         jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new BasicAuthenticator(), getLogger()));
-                    else if (config.authMethod == AuthMethod.DIGEST)
-                        jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new DigestAuthenticator(), getLogger()));
                     else if (config.authMethod == AuthMethod.CERT)
                         jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new ClientCertAuthenticator(), getLogger()));
                     else if (config.authMethod == AuthMethod.EXTERNAL)

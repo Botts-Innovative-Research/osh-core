@@ -161,10 +161,10 @@ public class TestHttpServer
     }
     
     
-    @Test
-    public void testConnectWithDigestAuth() throws Exception
+    @Test(expected = IllegalArgumentException.class)
+    public void testDigestAuthIsNotSupported()
     {
-        testConnect(AuthMethod.DIGEST);
+        AuthMethod.valueOf("DIGEST");
     }
     
     
