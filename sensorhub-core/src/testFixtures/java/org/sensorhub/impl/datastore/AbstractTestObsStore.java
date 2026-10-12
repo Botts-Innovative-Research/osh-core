@@ -417,6 +417,33 @@ public abstract class AbstractTestObsStore<StoreType extends IObsStore>
 
 
     @Test
+    public void testSelectLatestResultWithinPhenomenonTimeRange() throws Exception
+    {
+        var dsID = addSimpleDataStream(bigId(10), "out1");
+        var startTime = Instant.parse("2020-01-01T00:00:00Z");
+        var obs = new ArrayList<>(addSimpleObsWithoutResultTime(dsID, BigId.NONE, startTime, 5, 60000).entrySet());
+        forceReadBackFromStorage();
+
+        // range covers the 2nd to 3rd obs, so only the 3rd is expected
+        var filter = new ObsFilter.Builder()
+            .withDataStreams(dsID)
+            .withPhenomenonTimeDuring(startTime.plusSeconds(60), startTime.plusSeconds(150))
+            .withLatestResult()
+            .build();
+        var expected = Map.of(obs.get(2).getKey(), obs.get(2).getValue());
+        checkSelectedEntries(obsStore.selectEntries(filter), expected, filter);
+
+        // range after all obs
+        filter = new ObsFilter.Builder()
+            .withDataStreams(dsID)
+            .withPhenomenonTimeDuring(startTime.plusSeconds(3600), startTime.plusSeconds(7200))
+            .withLatestResult()
+            .build();
+        checkSelectedEntries(obsStore.selectEntries(filter), Collections.emptyMap(), filter);
+    }
+
+
+    @Test
     public void testAddAndRemoveEntireDatastream() throws Exception
     {
         var ds1ID = addSimpleDataStream(bigId(10), "out1");

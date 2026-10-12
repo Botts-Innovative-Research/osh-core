@@ -310,11 +310,12 @@ public class MVObsStoreImpl implements IObsStore
             }
             
             // if request if for latest result only, get only the latest obs in series
+            // within the requested phenomenon time range
             if (timeParams.latestResultOnly)
             {
-                MVTimeSeriesRecordKey maxKey = new MVTimeSeriesRecordKey(series.id, Instant.MAX);
+                MVTimeSeriesRecordKey maxKey = new MVTimeSeriesRecordKey(series.id, phenomenonTimeRange.upperEndpoint());
                 Entry<MVTimeSeriesRecordKey, IObsData> e = obsRecordsIndex.floorEntry(maxKey);
-                if (e != null && e.getKey().seriesID == series.id)
+                if (e != null && e.getKey().seriesID == series.id && phenomenonTimeRange.contains(e.getKey().timeStamp))
                     return Stream.of(e);
                 else
                     return Stream.empty();
