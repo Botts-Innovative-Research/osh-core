@@ -15,6 +15,7 @@ Copyright (C) 2022 Sensia Software LLC. All Rights Reserved.
 package org.sensorhub.impl.service.consys;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.time.Instant;
@@ -23,6 +24,7 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.sensorhub.api.common.SensorHubException;
+import org.sensorhub.impl.datastore.h2.MVObsSystemDatabase;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -33,6 +35,7 @@ public class TestObservations extends AbstractTestApiBase
 {
     TestSystems systemTests = new TestSystems();
     TestDataStreams datastreamTests = new TestDataStreams();
+    TestFois foiTests = new TestFois();
     
     
     @Before
@@ -41,6 +44,7 @@ public class TestObservations extends AbstractTestApiBase
         super.setup();
         systemTests.apiRootUrl = apiRootUrl;
         datastreamTests.apiRootUrl = apiRootUrl;
+        foiTests.apiRootUrl = apiRootUrl;
     }
     
     
@@ -174,6 +178,43 @@ public class TestObservations extends AbstractTestApiBase
     }
 
 
+    @Test
+    public void testWritesAreCommittedBeforeResponse() throws Exception
+    {
+        var mvStore = ((MVObsSystemDatabase)db).getMVStore();
+        
+        var sysUrl = systemTests.addFeature(9);
+        assertFalse("System not committed", mvStore.hasUnsavedChanges());
+        
+        var dsUrl = datastreamTests.addDatastreamOmJson(sysUrl, 1);
+        assertFalse("Datastream not committed", mvStore.hasUnsavedChanges());
+        
+        var urls = addObservationBatch(dsUrl, Instant.now(), 100, 5, false);
+        assertFalse("Observations not committed", mvStore.hasUnsavedChanges());
+        
+        sendDeleteRequestAndCheckStatus(urls.get(0), 204);
+        assertFalse("Observation delete not committed", mvStore.hasUnsavedChanges());
+    }
+    
+    
+    @Test
+    public void testSamplingFeatureObservations() throws Exception
+    {
+        var sysUrl = systemTests.addFeature(10);
+        var dsUrl = datastreamTests.addDatastreamOmJson(sysUrl, 1);
+        var foiId = getResourceId(foiTests.addFoi(null, 1));
+        
+        // obs with and without the sampling feature
+        var obsUrl = concat(dsUrl, OBS_COLLECTION);
+        for (int i = 0; i < 4; i++)
+            sendPostRequest(obsUrl + "?foi=" + foiId, createObservationNoFoi(Instant.now(), 100, i));
+        addObservationBatch(dsUrl, Instant.now(), 100, 3, false);
+        
+        sendGetRequestAndGetItems(concat(concat(FOI_COLLECTION, foiId), OBS_COLLECTION), 4);
+        sendGetRequestAndGetItems(obsUrl, 7);
+    }
+    
+    
     // Non-Test helper methods
 
     protected String addObservation(String dsUrl, Instant startTime, int num) throws Exception
