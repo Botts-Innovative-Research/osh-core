@@ -141,8 +141,41 @@ public class TestObservations extends AbstractTestApiBase
     }
     
     
+    @Test
+    public void testDatastreamFiltersCombineWithParent() throws Exception
+    {
+        // add 2 systems with 3 datastreams
+        var sysUrl1 = systemTests.addFeature(7);
+        var sysUrl2 = systemTests.addFeature(8);
+        var dsUrl1 = datastreamTests.addDatastreamOmJson(sysUrl1, 1);
+        var dsUrl2 = datastreamTests.addDatastreamOmJson(sysUrl1, 2);
+        var dsUrl3 = datastreamTests.addDatastreamOmJson(sysUrl2, 3);
+        var sysId1 = getResourceId(sysUrl1);
+        var sysId2 = getResourceId(sysUrl2);
+        var dsId1 = getResourceId(dsUrl1);
+        var dsId2 = getResourceId(dsUrl2);
+
+        addObservationBatch(dsUrl1, Instant.now(), 100, 10, false);
+        addObservationBatch(dsUrl2, Instant.now(), 100, 5, false);
+        addObservationBatch(dsUrl3, Instant.now(), 100, 3, false);
+
+        // params narrow the parent datastream, they don't replace it
+        var dsObs = concat(dsUrl1, OBS_COLLECTION);
+        sendGetRequestAndGetItems(dsObs + "?dataStream=" + dsId1, 10);
+        sendGetRequestAndGetItems(dsObs + "?dataStream=" + dsId2, 0);
+        sendGetRequestAndGetItems(dsObs + "?system=" + sysId1, 10);
+        sendGetRequestAndGetItems(dsObs + "?system=" + sysId2, 0);
+        sendGetRequestAndGetItems(dsObs + "?observedProperty=" + TestDataStreams.URI_DECIMAL_PROP, 10);
+        sendGetRequestAndGetItems(dsObs + "?observedProperty=http://blabla/nothing", 0);
+
+        // params combine with each other at the top level
+        sendGetRequestAndGetItems(OBS_COLLECTION + "?system=" + sysId1 + "&observedProperty=" + TestDataStreams.URI_DECIMAL_PROP, 15);
+        sendGetRequestAndGetItems(OBS_COLLECTION + "?dataStream=" + dsId2 + "&system=" + sysId2, 0);
+    }
+
+
     // Non-Test helper methods
-    
+
     protected String addObservation(String dsUrl, Instant startTime, int num) throws Exception
     {
         return addObservation(dsUrl, startTime, 1000L, num);
