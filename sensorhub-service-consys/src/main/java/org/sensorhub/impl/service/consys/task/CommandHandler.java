@@ -159,19 +159,28 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
         }
         
         // select binding depending on format
-        // custom formats (e.g. application/swe+proto) take precedence when the
-        // requested mime type matches and the format supports commands
-        if (contextData.csInfo != null && customFormats.containsKey(format.getMimeType()))
+        // use a custom format if available for selected mime type
+        // do this only if commands from single command stream are requested
+        if (contextData.csInfo != null)
         {
-            var binding = customFormats.get(format.getMimeType()).getCommandBinding(ctx, idEncoders, contextData.csInfo, forReading);
+            var binding = getCustomFormatBinding(ctx, contextData.csInfo, forReading);
             if (binding != null)
                 return binding;
         }
 
+        // otherwise use standard formats
         if (format.isOneOf(ResourceFormat.AUTO, ResourceFormat.JSON))
             return new CommandBindingJson(ctx, idEncoders, forReading, dataStore);
         else
             return new CommandBindingSweCommon(ctx, idEncoders, forReading, dataStore);
+    }
+
+
+    protected ResourceBinding<BigId, ICommandData> getCustomFormatBinding(RequestContext ctx, ICommandStreamInfo csInfo, boolean forReading) throws IOException
+    {
+        var format = ctx.getFormat();
+        var cmdFormat = customFormats.get(format.getMimeType());
+        return cmdFormat != null ? cmdFormat.getCommandBinding(ctx, idEncoders, csInfo, forReading) : null;
     }
     
     
