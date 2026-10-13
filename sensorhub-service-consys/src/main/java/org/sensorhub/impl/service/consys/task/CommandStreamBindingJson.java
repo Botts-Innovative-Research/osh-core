@@ -31,7 +31,6 @@ import org.sensorhub.impl.service.consys.InvalidRequestException;
 import org.sensorhub.impl.service.consys.ResourceParseException;
 import org.sensorhub.impl.service.consys.SWECommonUtils;
 import org.sensorhub.impl.service.consys.ServiceErrors;
-import org.sensorhub.impl.service.consys.obs.CustomObsFormat;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
 import org.sensorhub.impl.service.consys.resource.ResourceBindingJson;
 import org.sensorhub.impl.service.consys.resource.ResourceFormat;
@@ -53,7 +52,7 @@ public class CommandStreamBindingJson extends ResourceBindingJson<CommandStreamK
     final CommandStreamAssocs assocs;
     final String rootURL;
     final SWEStaxBindings sweBindings;
-    final Map<String, CustomObsFormat> customFormats;
+    final Map<String, CustomCommandFormat> customFormats;
     SWEJsonStreamReader sweReader;
     SWEJsonStreamWriter sweWriter;
 
@@ -64,7 +63,7 @@ public class CommandStreamBindingJson extends ResourceBindingJson<CommandStreamK
     }
 
 
-    public CommandStreamBindingJson(RequestContext ctx, IdEncoders idEncoders, IObsSystemDatabase db, boolean forReading, Map<String, CustomObsFormat> customFormats) throws IOException
+    public CommandStreamBindingJson(RequestContext ctx, IdEncoders idEncoders, IObsSystemDatabase db, boolean forReading, Map<String, CustomCommandFormat> customFormats) throws IOException
     {
         super(ctx, idEncoders, forReading);
 
@@ -134,7 +133,7 @@ public class CommandStreamBindingJson extends ResourceBindingJson<CommandStreamK
                     ResourceBindingJson<CommandStreamKey, ICommandStreamInfo> schemaBinding;
                     if (commandFormat != null && customFormats.containsKey(commandFormat))
                     {
-                        var custom = customFormats.get(commandFormat).getCommandSchemaBinding(ctx, idEncoders, null);
+                        var custom = customFormats.get(commandFormat).getSchemaBinding(ctx, idEncoders, null);
                         if (!(custom instanceof ResourceBindingJson))
                             throw ServiceErrors.unsupportedFormat(commandFormat);
                         schemaBinding = (ResourceBindingJson<CommandStreamKey, ICommandStreamInfo>) custom;

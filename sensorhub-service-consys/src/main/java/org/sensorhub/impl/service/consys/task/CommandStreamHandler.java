@@ -30,7 +30,6 @@ import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ConSysApiSecurity;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
-import org.sensorhub.impl.service.consys.obs.CustomObsFormat;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
 import org.sensorhub.impl.service.consys.resource.ResourceBinding;
 import org.sensorhub.impl.service.consys.resource.ResourceFormat;
@@ -47,7 +46,7 @@ public class CommandStreamHandler extends ResourceHandler<CommandStreamKey, ICom
     final IObsSystemDatabase db;
     final SystemDatabaseTransactionHandler transactionHandler;
     final CommandStreamEventsHandler eventsHandler;
-    final Map<String, CustomObsFormat> customFormats;
+    final Map<String, CustomCommandFormat> customFormats;
 
 
     public CommandStreamHandler(HandlerContext ctx, ResourcePermissions permissions)
@@ -56,7 +55,7 @@ public class CommandStreamHandler extends ResourceHandler<CommandStreamKey, ICom
     }
 
 
-    public CommandStreamHandler(HandlerContext ctx, ResourcePermissions permissions, Map<String, CustomObsFormat> customFormats)
+    public CommandStreamHandler(HandlerContext ctx, ResourcePermissions permissions, Map<String, CustomCommandFormat> customFormats)
     {
         super(ctx.getReadDb().getCommandStreamStore(), ctx.getCommandStreamIdEncoder(), ctx, permissions);
         this.db = ctx.getReadDb();

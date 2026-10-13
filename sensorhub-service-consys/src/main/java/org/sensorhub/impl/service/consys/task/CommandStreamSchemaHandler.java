@@ -25,7 +25,6 @@ import org.sensorhub.impl.service.consys.InvalidRequestException;
 import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
-import org.sensorhub.impl.service.consys.obs.CustomObsFormat;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
 import org.sensorhub.impl.service.consys.resource.ResourceBinding;
 import org.sensorhub.impl.service.consys.resource.ResourceFormat;
@@ -38,7 +37,7 @@ public class CommandStreamSchemaHandler extends ResourceHandler<CommandStreamKey
 {
     public static final String[] NAMES = { "schema" };
 
-    final Map<String, CustomObsFormat> customFormats;
+    final Map<String, CustomCommandFormat> customFormats;
 
 
     public CommandStreamSchemaHandler(HandlerContext ctx, ResourcePermissions permissions)
@@ -47,7 +46,7 @@ public class CommandStreamSchemaHandler extends ResourceHandler<CommandStreamKey
     }
 
 
-    public CommandStreamSchemaHandler(HandlerContext ctx, ResourcePermissions permissions, Map<String, CustomObsFormat> customFormats)
+    public CommandStreamSchemaHandler(HandlerContext ctx, ResourcePermissions permissions, Map<String, CustomCommandFormat> customFormats)
     {
         super(ctx.getReadDb().getCommandStreamStore(), ctx.getCommandStreamIdEncoder(), ctx, permissions);
         this.customFormats = customFormats != null ? customFormats : java.util.Collections.emptyMap();
@@ -78,7 +77,7 @@ public class CommandStreamSchemaHandler extends ResourceHandler<CommandStreamKey
             var csInfo = dataStore.get(new CommandStreamKey(ctx.getParentRef().internalID));
             if (csInfo == null)
                 throw ServiceErrors.notFound();
-            var binding = customFormats.get(cmdFormat.getMimeType()).getCommandSchemaBinding(ctx, idEncoders, csInfo);
+            var binding = customFormats.get(cmdFormat.getMimeType()).getSchemaBinding(ctx, idEncoders, csInfo);
             if (binding == null)
                 throw ServiceErrors.unsupportedFormat(cmdFormat);
             return binding;

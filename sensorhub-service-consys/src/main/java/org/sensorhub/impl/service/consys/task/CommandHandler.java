@@ -46,7 +46,6 @@ import org.sensorhub.impl.service.consys.InvalidRequestException.ErrorCode;
 import org.sensorhub.impl.service.consys.HandlerContext;
 import org.sensorhub.impl.service.consys.ServiceErrors;
 import org.sensorhub.impl.service.consys.RestApiServlet.ResourcePermissions;
-import org.sensorhub.impl.service.consys.obs.CustomObsFormat;
 import org.sensorhub.impl.service.consys.resource.BaseResourceHandler;
 import org.sensorhub.impl.service.consys.resource.IResourceHandler;
 import org.sensorhub.impl.service.consys.resource.RequestContext;
@@ -69,7 +68,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
     final SystemDatabaseTransactionHandler readOnlyTxHandler;
     final SystemDatabaseTransactionHandler fullTxHandler;
     final ScheduledExecutorService threadPool;
-    final Map<String, CustomObsFormat> customFormats;
+    final Map<String, CustomCommandFormat> customFormats;
     final Random random = new SecureRandom();
 
 
@@ -88,7 +87,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
     }
 
 
-    public CommandHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions, Map<String, CustomObsFormat> customFormats)
+    public CommandHandler(HandlerContext ctx, ScheduledExecutorService threadPool, ResourcePermissions permissions, Map<String, CustomCommandFormat> customFormats)
     {
         super(ctx.getReadDb().getCommandStore(), ctx.getCommandIdEncoder(), ctx, permissions);
 
