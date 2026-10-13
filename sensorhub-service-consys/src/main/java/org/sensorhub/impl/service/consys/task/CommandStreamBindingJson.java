@@ -308,14 +308,8 @@ public class CommandStreamBindingJson extends ResourceBindingJson<CommandStreamK
 
             // available formats
             writer.name("formats").beginArray();
-            writer.value(ResourceFormat.JSON.getMimeType());
-            if (ResourceFormat.allowNonBinaryFormat(csInfo.getRecordEncoding()))
-            {
-                writer.value(ResourceFormat.SWE_JSON.getMimeType());
-                writer.value(ResourceFormat.SWE_TEXT.getMimeType());
-                writer.value(ResourceFormat.SWE_XML.getMimeType());
-            }
-            writer.value(ResourceFormat.SWE_BINARY.getMimeType());
+            for (var f: SWECommonUtils.getAvailableFormats(csInfo, customFormats))
+                writer.value(f);
             writer.endArray();
         }
 
