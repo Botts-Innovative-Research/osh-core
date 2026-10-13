@@ -207,11 +207,7 @@ public class CommandHandler extends BaseResourceHandler<BigId, ICommandData, Com
         
         var queryParams = ctx.getParameterMap();
         var filter = getFilter(ctx.getParentRef(), queryParams, 0, Long.MAX_VALUE);
-        // default to the format already set by the transport layer, if any
-        // (e.g. MQTT ":data/<format-token>" subtopics); an explicit f= query
-        // param still takes precedence
-        var defaultFormat = ctx.getFormat() != null ? ctx.getFormat() : ResourceFormat.AUTO;
-        var responseFormat = parseFormat(queryParams, defaultFormat);
+        var responseFormat = parseFormat(queryParams);
         ctx.setFormatOptions(responseFormat, parseSelectArg(queryParams));
         
         // continue when streaming actually starts
