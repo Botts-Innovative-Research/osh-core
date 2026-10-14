@@ -533,6 +533,23 @@ public class ConSysApiClient
     /* Deployments */
     /*-------------*/
 
+    public CompletableFuture<IDeploymentWithDesc> getDeploymentById(String id, ResourceFormat format)
+    {
+        return sendGetRequest(endpoint.resolve(DEPLOYMENTS_COLLECTION + "/" + urlPathEncode(id)), format, body -> {
+            try
+            {
+                var ctx = new RequestContext(body);
+                var binding = new DeploymentBindingGeoJson(ctx, null, null, true);
+                return binding.deserialize();
+            }
+            catch (IOException e)
+            {
+                e.printStackTrace();
+                throw new CompletionException(e);
+            }
+        });
+    }
+
     public CompletableFuture<IDeploymentWithDesc> getDeploymentByUid(String uid, ResourceFormat format)
     {
         return sendGetRequest(endpoint.resolve(DEPLOYMENTS_COLLECTION + "?id=" + urlQueryEncode(uid)), format, body -> {
