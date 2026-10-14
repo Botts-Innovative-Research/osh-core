@@ -48,6 +48,7 @@ import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
+import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
 import org.eclipse.jetty.xml.XmlConfiguration;
 import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.module.ModuleEvent.ModuleState;
@@ -280,8 +281,10 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                 {
                     throw new IOException("Cannot configure Jetty using external XML file", e);
                 }
-            }            
-            
+            }
+
+            JettyWebSocketServletContainerInitializer.configure(servletHandler, null);
+
             server.start();
             getLogger().info("HTTP server started on port " + config.httpPort);
             
