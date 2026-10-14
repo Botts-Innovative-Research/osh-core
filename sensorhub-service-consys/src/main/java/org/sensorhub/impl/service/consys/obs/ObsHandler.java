@@ -172,7 +172,7 @@ public class ObsHandler extends BaseResourceHandler<BigId, IObsData, ObsFilter, 
                 var mimeType = entry.getKey();
                 var formatImpl = entry.getValue();
                 
-                if (formatImpl.isCompatible(dsInfo))
+                if (formatImpl.isAutoSelectable(dsInfo))
                 {
                     obsFormat = formatImpl;
                     ctx.getLogger().info("Auto-selecting format {}", mimeType);
