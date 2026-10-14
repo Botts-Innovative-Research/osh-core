@@ -56,6 +56,14 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
     protected static final String SERVLET_PARAM_MODULE = "module_instance";
     protected static final String WIDGETSET = "widgetset";
     protected static final int HEARTBEAT_INTERVAL = 10; // in seconds
+    protected static final String ATMOSPHERE_ASYNC_SUPPORT = "org.atmosphere.cpr.asyncSupport";
+    protected static final String SERVLET30_ASYNC_SUPPORT = "org.atmosphere.container.Servlet30CometSupport";
+
+    // strong refs so the JUL config of these loggers is not garbage collected
+    static final java.util.logging.Logger[] PUSH_JUL_LOGGERS = {
+        java.util.logging.Logger.getLogger("org.atmosphere"),
+        java.util.logging.Logger.getLogger("com.vaadin")
+    };
     
     VaadinServlet adminUIServlet;
     VaadinServlet vaaadinResourcesServlet;
@@ -150,6 +158,9 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
     {
         // reset java util logging config so we don't get annoying atmosphere logs
         LogManager.getLogManager().reset();//.getLogger("org.atmosphere").setLevel(Level.OFF);
+
+        // but still forward Vaadin/Atmosphere warnings and errors (e.g. push init failures) to the OSH log
+        forwardPushWarningsToLog();
         
         adminUIServlet = new AdminUIServlet(getSecurityHandler(), getLogger());
         vaaadinResourcesServlet = new VaadinResourcesServlet(this, getLogger());
@@ -164,12 +175,16 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
         }
         initParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
         initParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
+        // Atmosphere 2.4.30.vaadin4 auto-detection mistakes Jetty 10 for Jetty 9 and fails to load
+        // org.eclipse.jetty.websocket.servlet.WebSocketCreator; force plain Servlet 3.0 async support
+        initParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
 
 
         initLandingParams.put(SERVLET_PARAM_UI_CLASS, LandingUI.class.getCanonicalName());
         if (config.widgetSet != null) initLandingParams.put(WIDGETSET, config.widgetSet);
         initLandingParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
         initLandingParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
+        initLandingParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
 
         // deploy servlet
         // HACK: we have to disable std err to hide message due to Vaadin duplicate implementation of SL4J
@@ -212,6 +227,30 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
         setState(ModuleState.STARTED);
     }
     
+
+    /*
+     * Forward JUL warnings/errors from Vaadin and Atmosphere to the module logger.
+     * Must be called after LogManager.reset() since reset removes all JUL handlers.
+     */
+    protected void forwardPushWarningsToLog()
+    {
+        final org.slf4j.Logger oshLog = getLogger();
+        final java.util.logging.Formatter formatter = new java.util.logging.SimpleFormatter();
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override
+            public void publish(java.util.logging.LogRecord r)
+            {
+                if (isLoggable(r))
+                    oshLog.warn("[{}] {}", r.getLoggerName(), formatter.formatMessage(r), r.getThrown());
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        handler.setLevel(java.util.logging.Level.WARNING);
+        for (var julLogger: PUSH_JUL_LOGGERS)
+            julLogger.addHandler(handler);
+    }
+
 
     @Override
     protected void doStop() throws SensorHubException
