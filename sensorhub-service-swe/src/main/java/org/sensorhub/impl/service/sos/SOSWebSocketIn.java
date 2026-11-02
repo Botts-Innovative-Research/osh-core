@@ -16,9 +16,9 @@ package org.sensorhub.impl.service.sos;
 
 import java.io.ByteArrayInputStream;
 import java.util.function.Consumer;
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.StatusCode;
-import org.eclipse.jetty.websocket.api.WebSocketListener;
+import org.eclipse.jetty.ee8.websocket.api.Session;
+import org.eclipse.jetty.ee8.websocket.api.StatusCode;
+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
 import org.sensorhub.impl.service.WebSocketUtils;
 import org.slf4j.Logger;
 import org.vast.cdm.common.DataStreamParser;

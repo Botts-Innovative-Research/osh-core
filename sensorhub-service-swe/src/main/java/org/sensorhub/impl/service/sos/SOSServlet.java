@@ -53,7 +53,7 @@ import net.opengis.swe.v20.BinaryMember;
 import net.opengis.swe.v20.DataBlock;
 import net.opengis.swe.v20.DataComponent;
 import net.opengis.swe.v20.DataEncoding;
-import org.eclipse.jetty.websocket.api.WebSocketListener;
+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
 import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.data.IDataStreamInfo;
 import org.sensorhub.api.datastore.obs.DataStreamFilter;

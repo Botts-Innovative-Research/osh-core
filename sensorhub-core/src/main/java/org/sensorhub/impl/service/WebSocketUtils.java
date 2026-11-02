@@ -17,7 +17,7 @@ package org.sensorhub.impl.service;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.security.Principal;
-import org.eclipse.jetty.websocket.api.Session;
+import org.eclipse.jetty.ee8.websocket.api.Session;
 import org.slf4j.Logger;
 
 

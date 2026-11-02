@@ -29,6 +29,7 @@ import org.sensorhub.utils.ConfigValidator;
 import org.sensorhub.utils.ModuleUtils;
 import org.sensorhub.utils.MsgUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.vast.util.Asserts;
 
 
@@ -690,6 +691,22 @@ public abstract class AbstractModule<ConfigType extends ModuleConfig> implements
         if (logger == null)
             logger = ModuleUtils.createModuleLogger(this);        
         return logger;
+    }
+    
+    
+    /**
+     * Closes the module's dedicated logger, releasing its log file.<br/>
+     * Messages logged afterwards (e.g. by threads still finishing) are sent to the
+     * main log instead, and the module log file is not reopened.
+     */
+    public void closeLogger()
+    {
+        Logger moduleLogger = logger;
+        if (moduleLogger != null)
+        {
+            logger = LoggerFactory.getLogger(getClass());
+            ModuleUtils.closeModuleLogger(moduleLogger);
+        }
     }
     
     

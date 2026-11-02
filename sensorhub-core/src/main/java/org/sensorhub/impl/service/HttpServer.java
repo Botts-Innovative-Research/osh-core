@@ -27,28 +27,32 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpVersion;
-import org.eclipse.jetty.security.Authenticator;
-import org.eclipse.jetty.security.ConstraintMapping;
-import org.eclipse.jetty.security.ConstraintSecurityHandler;
-import org.eclipse.jetty.security.authentication.BasicAuthenticator;
-import org.eclipse.jetty.security.authentication.ClientCertAuthenticator;
+import org.eclipse.jetty.ee8.security.Authenticator;
+import org.eclipse.jetty.ee8.security.ConstraintMapping;
+import org.eclipse.jetty.ee8.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.ee8.security.authentication.BasicAuthenticator;
+import org.eclipse.jetty.ee8.security.authentication.SslClientCertAuthenticator;
 import org.eclipse.jetty.server.HttpConfiguration;
 import org.eclipse.jetty.server.HttpConnectionFactory;
 import org.eclipse.jetty.server.SecureRequestCustomizer;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.util.Callback;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.SslConnectionFactory;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.handler.HandlerCollection;
-import org.eclipse.jetty.server.handler.HandlerList;
 import org.eclipse.jetty.server.handler.ResourceHandler;
-import org.eclipse.jetty.servlet.*;
-import org.eclipse.jetty.servlets.CrossOriginFilter;
+import org.eclipse.jetty.ee8.servlet.*;
+import org.eclipse.jetty.ee8.servlets.CrossOriginFilter;
 import org.eclipse.jetty.util.resource.Resource;
-import org.eclipse.jetty.util.security.Constraint;
+import org.eclipse.jetty.util.resource.ResourceFactory;
+import org.eclipse.jetty.ee8.nested.ServletConstraint;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
+import org.eclipse.jetty.ee8.websocket.server.config.JettyWebSocketServletContainerInitializer;
 import org.eclipse.jetty.xml.XmlConfiguration;
 import org.sensorhub.api.common.SensorHubException;
 import org.sensorhub.api.module.ModuleEvent.ModuleState;
@@ -89,6 +93,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
     Server server;
     ServletContextHandler servletHandler;
     ConstraintSecurityHandler jettySecurityHandler;
+    SslContextFactory.Server sslContextFactory;
     
     
     public HttpServer()
@@ -118,7 +123,8 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             server = new Server();
             ServerConnector http = null;
             ServerConnector https = null;
-            HandlerCollection handlers = new HandlerCollection(true);
+            // dynamic sequence so handlers can still be added after the server is started
+            Handler.Sequence handlers = new Handler.Sequence(true, new ArrayList<>());
             
             // HTTP connector
             HttpConfiguration httpConfig = new HttpConfiguration();
@@ -139,7 +145,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             {
                 KeyStoreInfo keyStoreInfo = getKeyStoreInfo(config);
                 
-                SslContextFactory.Server sslContextFactory = new SslContextFactory.Server();
+                sslContextFactory = new SslContextFactory.Server();
                 sslContextFactory.setKeyStorePath(new File(keyStoreInfo.getKeyStorePath()).getAbsolutePath());
                 sslContextFactory.setKeyStorePassword(keyStoreInfo.getKeyStorePassword());
                 sslContextFactory.setKeyManagerPassword(keyStoreInfo.getKeyStorePassword());
@@ -164,16 +170,33 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             
             // static content
             ContextHandler fileResourceContext = null;
-            if (config.staticDocsRootUrl != null)
+            // Jetty 12 refuses to start a context whose base folder does not exist,
+            // so only serve static content if the configured folder is there
+            boolean staticDirExists = config.staticDocsRootDir != null &&
+                new File(config.staticDocsRootDir).isDirectory();
+            if (config.staticDocsRootUrl != null && !staticDirExists)
+                getLogger().warn("Static resources folder '{}' not found, static content will not be served", config.staticDocsRootDir);
+            if (config.staticDocsRootUrl != null && staticDirExists)
             {
-                ResourceHandler fileResourceHandler = new ResourceHandler();
+                ResourceHandler fileResourceHandler = new ResourceHandler() {
+                    @Override
+                    public boolean handle(Request request, Response response, Callback callback) throws Exception
+                    {
+                        // Jetty 12 ResourceHandler answers all OPTIONS requests itself;
+                        // let them through so CORS preflight reaches the servlets
+                        if (HttpMethod.OPTIONS.is(request.getMethod()))
+                            return false;
+                        return super.handle(request, response, callback);
+                    }
+                };
                 fileResourceHandler.setEtags(true);
                 
                 fileResourceContext = new ContextHandler();
                 fileResourceContext.setContextPath(config.staticDocsRootUrl);
+                fileResourceContext.setClassLoader(null);
                 //fileResourceContext.setAllowNullPathInfo(true);
                 fileResourceContext.setHandler(fileResourceHandler);
-                fileResourceContext.setResourceBase(config.staticDocsRootDir);
+                fileResourceContext.setBaseResourceAsString(config.staticDocsRootDir);
 
                 //fileResourceContext.clearAliasChecks();
                 //fileResourceContext.addAliasCheck(new SymlinkAllowedResourceAliasChecker(fileResourceContext));
@@ -188,7 +211,13 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                 // create servlet handler
                 this.servletHandler = new ServletContextHandler(ServletContextHandler.SESSIONS);
                 servletHandler.setContextPath(config.servletsRootUrl);
-                handlers.addHandler(servletHandler);
+                // Jetty 12 pins the thread context classloader that was current when the context
+                // was created (the core bundle's loader under OSGi) and switches to it on every
+                // request and servlet init. Like Jetty 9/10, leave the caller's classloader in place
+                // so libraries embedded in other bundles (e.g. Vaadin/Atmosphere) can load their classes.
+                servletHandler.setClassLoader(null);
+                // ee8 servlet context is a nested handler; register its core handler with the server
+                handlers.addHandler(servletHandler.get());
                 getLogger().info("Servlets root is " + config.servletsRootUrl);
                 
                 // security handler
@@ -203,7 +232,11 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                     if (config.authMethod == AuthMethod.BASIC)
                         jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new BasicAuthenticator(), getLogger()));
                     else if (config.authMethod == AuthMethod.CERT)
-                        jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new ClientCertAuthenticator(), getLogger()));
+                    {
+                        if (sslContextFactory == null)
+                            throw new IllegalStateException("Certificate authentication requires an HTTPS port to be configured");
+                        jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new SslClientCertAuthenticator(sslContextFactory), getLogger()));
+                    }
                     else if (config.authMethod == AuthMethod.EXTERNAL)
                     {
                         Authenticator authenticator = securityManager.getAuthenticator();
@@ -259,7 +292,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             {
                 try
                 {
-                    Resource configFile = Resource.newResource(new File(config.xmlConfigFile));
+                    Resource configFile = ResourceFactory.of(server).newResource(new File(config.xmlConfigFile).toPath());
                     XmlConfiguration xmlConfig = new XmlConfiguration(configFile);
                     
                     // assign IDs to existing beans so they can be reconfigured
@@ -283,12 +316,18 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                 }
             }
 
-            JettyWebSocketServletContainerInitializer.configure(servletHandler, null);
+            if (servletHandler != null)
+            {
+                JettyWebSocketServletContainerInitializer.configure(servletHandler, null);
+                
+                // hide servlet name in error pages
+                if (servletHandler.getErrorHandler() != null)
+                    servletHandler.getErrorHandler().setShowServlet(false);
+            }
 
             server.start();
             getLogger().info("HTTP server started on port " + config.httpPort);
             
-            server.getErrorHandler().setShowServlet(false);
             setState(ModuleState.STARTED);
         }
         catch (Exception e)
@@ -308,6 +347,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                 server.stop();
                 servletHandler = null;
                 jettySecurityHandler = null;
+                sslContextFactory = null;
                 server = null;
             }
         }
@@ -395,7 +435,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
     
     public void addServletSecurity(String pathSpec, boolean requireAuth)
     {
-        addServletSecurity(pathSpec, requireAuth, Constraint.ANY_AUTH);
+        addServletSecurity(pathSpec, requireAuth, ServletConstraint.ANY_AUTH);
     }
     
     
@@ -403,7 +443,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
     {
         if (jettySecurityHandler != null)
         {
-            Constraint constraint = new Constraint();
+            ServletConstraint constraint = new ServletConstraint();
             constraint.setRoles(roles);
             constraint.setAuthenticate(requireAuth);
             ConstraintMapping cm = new ConstraintMapping();

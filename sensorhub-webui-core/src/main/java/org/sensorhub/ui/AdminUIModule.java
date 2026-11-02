@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.logging.LogManager;
 
 import com.vaadin.server.VaadinServlet;
-import org.eclipse.jetty.servlet.ErrorPageErrorHandler;
+import org.eclipse.jetty.ee8.servlet.ErrorPageErrorHandler;
 import org.sensorhub.api.comm.CommProviderConfig;
 import org.sensorhub.api.comm.NetworkConfig;
 import org.sensorhub.api.common.SensorHubException;
@@ -175,7 +175,7 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
         }
         initParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
         initParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
-        // Atmosphere 2.4.30.vaadin4 auto-detection mistakes Jetty 10 for Jetty 9 and fails to load
+        // Atmosphere 2.4.30.vaadin4 auto-detection does not support Jetty 10+ (incl. Jetty 12 ee8) and fails to load
         // org.eclipse.jetty.websocket.servlet.WebSocketCreator; force plain Servlet 3.0 async support
         initParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
 
@@ -190,35 +190,48 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
         // HACK: we have to disable std err to hide message due to Vaadin duplicate implementation of SL4J
         // Note that this may hide error messages in oth er modules now that startup sequence is multithreaded
         PrintStream oldStdErr = System.err;
+        
+        // Atmosphere (Vaadin push) loads its container support class through the thread
+        // context classloader. Under OSGi that must be this bundle's loader, since Atmosphere
+        // is embedded here and not visible from sensorhub-core.
+        ClassLoader oldContextLoader = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(AdminUIModule.class.getClassLoader());
         System.setErr(new PrintStream(new OutputStream() {
             @Override
             public void write(int b) { }
         }));
 
 
-        if (config.enableLandingPage){
-            httpServer.deployServlet(vaaadinResourcesServlet, initParams, "/VAADIN/*");
-            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*");
-            httpServer.deployServlet(landingServlet, initLandingParams, "/*");
-            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
-            landingServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
-            httpServer.addServletSecurity("/*", true);
+        try
+        {
+            if (config.enableLandingPage){
+                httpServer.deployServlet(vaaadinResourcesServlet, initParams, "/VAADIN/*");
+                httpServer.deployServlet(adminUIServlet, initParams, "/admin/*");
+                httpServer.deployServlet(landingServlet, initLandingParams, "/*");
+                adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+                landingServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+                httpServer.addServletSecurity("/*", true);
 
-            var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
+                var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
 
-            ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
-            errorHandler.addErrorPage(400, "/error/invalid");
-            errorHandler.addErrorPage(403, "/error/forbidden");
-            errorHandler.addErrorPage(404, "/error/notfound");
+                ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
+                errorHandler.setShowServlet(false);
+                errorHandler.addErrorPage(400, "/error/invalid");
+                errorHandler.addErrorPage(403, "/error/forbidden");
+                errorHandler.addErrorPage(404, "/error/notfound");
 
-            server.getServletHandler().setErrorHandler(errorHandler);
+                server.getServletHandler().setErrorHandler(errorHandler);
+            }
+            else {
+                httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
+                adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+            }
         }
-        else {
-            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
-            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
+        finally
+        {
+            System.setErr(oldStdErr);
+            Thread.currentThread().setContextClassLoader(oldContextLoader);
         }
-        
-        System.setErr(oldStdErr);
 
         // setup security
         httpServer.addServletSecurity("/admin/*", true);

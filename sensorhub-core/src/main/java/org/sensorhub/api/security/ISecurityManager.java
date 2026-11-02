@@ -15,7 +15,7 @@ Copyright (C) 2012-2015 Sensia Software LLC. All Rights Reserved.
 package org.sensorhub.api.security;
 
 import java.util.Collection;
-import org.eclipse.jetty.security.Authenticator;
+import org.eclipse.jetty.ee8.security.Authenticator;
 
 
 /**
