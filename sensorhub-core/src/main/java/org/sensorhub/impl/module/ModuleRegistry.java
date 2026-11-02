@@ -921,11 +921,16 @@ public class ModuleRegistry implements IModuleManager<IModule<?>>, IEventListene
             if (module != null)
             {
                 module.stop();
-                getStateManager(moduleID).cleanup();
                 module.cleanup();
                 
                 if (module.isInitialized() && module instanceof ISystemDriver)
                     hub.getSystemDriverRegistry().unregister((ISystemDriver)module);
+                
+                // close the module log file before deleting the module data folder,
+                // otherwise deletion fails on Windows because log.txt is still open
+                if (module instanceof AbstractModule)
+                    ((AbstractModule<?>)module).closeLogger();
+                getStateManager(moduleID).cleanup();
                 
                 handleEvent(new ModuleEvent(module, Type.DELETED));
             }

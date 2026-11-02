@@ -29,12 +29,12 @@ import java.util.concurrent.TimeUnit;
 
 import javax.servlet.http.HttpServletResponse;
 
-import org.eclipse.jetty.client.util.BasicAuthentication;
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.exceptions.UpgradeException;
-import org.eclipse.jetty.websocket.api.WebSocketAdapter;
-import org.eclipse.jetty.websocket.api.WebSocketListener;
-import org.eclipse.jetty.websocket.client.WebSocketClient;
+import org.eclipse.jetty.client.BasicAuthentication;
+import org.eclipse.jetty.ee8.websocket.api.Session;
+import org.eclipse.jetty.ee8.websocket.api.exceptions.UpgradeException;
+import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
 import org.sensorhub.api.common.SensorHubException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

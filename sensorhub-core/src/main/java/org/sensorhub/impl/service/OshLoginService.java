@@ -16,11 +16,13 @@ package org.sensorhub.impl.service;
 
 import java.security.Principal;
 import javax.security.auth.Subject;
-import javax.servlet.ServletRequest;
+import java.util.function.Function;
 import org.eclipse.jetty.security.DefaultIdentityService;
 import org.eclipse.jetty.security.IdentityService;
 import org.eclipse.jetty.security.LoginService;
-import org.eclipse.jetty.server.UserIdentity;
+import org.eclipse.jetty.security.UserIdentity;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Session;
 import org.eclipse.jetty.util.security.Credential;
 import org.sensorhub.api.security.ISecurityManager;
 import org.sensorhub.api.security.IUserInfo;
@@ -93,7 +95,7 @@ public class OshLoginService implements LoginService
 
 
     @Override
-    public UserIdentity login(String username, Object credentials, ServletRequest request)
+    public UserIdentity login(String username, Object credentials, Request request, Function<Boolean, Session> getOrCreateSession)
     {
         if (username == null)
             return null;

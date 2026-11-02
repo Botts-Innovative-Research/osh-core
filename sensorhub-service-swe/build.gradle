@@ -3,7 +3,8 @@ ext.details = 'Implementation of OGC SWE standard interfaces as OSH services and
 
 dependencies {
   implementation project(':sensorhub-core')
-  embeddedApi 'org.eclipse.jetty.websocket:websocket-jetty-client:10.0.26'
+  // Jetty websocket client is provided by sensorhub-core (embedding it here too
+  // makes two bundles export the same Jetty packages and breaks OSGi resolution)
 
   embeddedApi(project(':ogc-services-sos')) {
     // exclude from embedded jars, already provided by sensorhub-core

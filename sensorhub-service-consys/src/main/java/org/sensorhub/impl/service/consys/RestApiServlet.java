@@ -31,7 +31,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.eclipse.jetty.io.EofException;
-import org.eclipse.jetty.websocket.server.JettyWebSocketServerContainer;
+import org.eclipse.jetty.ee8.websocket.server.JettyWebSocketServerContainer;
 import org.sensorhub.api.security.IPermission;
 import org.sensorhub.api.security.ISecurityManager;
 import org.sensorhub.impl.service.consys.resource.IResourceHandler;

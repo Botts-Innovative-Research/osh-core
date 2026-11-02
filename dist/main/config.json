@@ -77,7 +77,7 @@
     "autoStart": true
   },
   {
-    "objClass": "org.sensorhub.impl.service.sweapi.SWEApiServiceConfig",
+    "objClass": "org.sensorhub.impl.service.consys.ConSysApiServiceConfig",
     "databaseID": "0309491d-d5cb-4f2f-9b95-166179c66746",
     "exposedResources": {
       "objClass": "org.sensorhub.impl.datastore.view.ObsSystemDatabaseViewConfig",
@@ -114,8 +114,8 @@
     "enableSOAP": true,
     "endPoint": "/api",
     "id": "9d23a6a7-7455-41d1-9f1d-494be4e2463c",
-    "moduleClass": "org.sensorhub.impl.service.sweapi.SWEApiService",
-    "name": "SWE API HTTP Service",
+    "moduleClass": "org.sensorhub.impl.service.consys.ConSysApiService",
+    "name": "Connected Systems API Service",
     "autoStart": true
   }
 ]

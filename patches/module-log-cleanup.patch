@@ -1,0 +1,80 @@
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java
+@@ -29,6 +29,7 @@
+ import org.sensorhub.utils.ModuleUtils;
+ import org.sensorhub.utils.MsgUtils;
+ import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
+ import org.vast.util.Asserts;
+ 
+ 
+@@ -693,6 +694,22 @@
+     }
+     
+     
++    /**
++     * Closes the module's dedicated logger, releasing its log file.<br/>
++     * Messages logged afterwards (e.g. by threads still finishing) are sent to the
++     * main log instead, and the module log file is not reopened.
++     */
++    public void closeLogger()
++    {
++        Logger moduleLogger = logger;
++        if (moduleLogger != null)
++        {
++            logger = LoggerFactory.getLogger(getClass());
++            ModuleUtils.closeModuleLogger(moduleLogger);
++        }
++    }
++    
++    
+     @Override
+     public String toString()
+     {
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java
+@@ -921,12 +921,17 @@
+             if (module != null)
+             {
+                 module.stop();
+-                getStateManager(moduleID).cleanup();
+                 module.cleanup();
+                 
+                 if (module.isInitialized() && module instanceof ISystemDriver)
+                     hub.getSystemDriverRegistry().unregister((ISystemDriver)module);
+                 
++                // close the module log file before deleting the module data folder,
++                // otherwise deletion fails on Windows because log.txt is still open
++                if (module instanceof AbstractModule)
++                    ((AbstractModule<?>)module).closeLogger();
++                getStateManager(moduleID).cleanup();
++                
+                 handleEvent(new ModuleEvent(module, Type.DELETED));
+             }
+             
+--- a/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
+@@ -244,6 +244,23 @@
+     }
+     
+     /**
++     * Stops the separate logging context of a logger created by {@link #createModuleLogger(IModule)}.
++     * This closes the module's appenders, in particular its log file, which is required before the
++     * module data folder can be deleted (open files cannot be deleted on Windows).<br/>
++     * Loggers that belong to the default logging context are left untouched.
++     * @param logger Module logger to close (can be null)
++     */
++    public static void closeModuleLogger(Logger logger)
++    {
++        if (logger instanceof ch.qos.logback.classic.Logger)
++        {
++            LoggerContext logContext = ((ch.qos.logback.classic.Logger)logger).getLoggerContext();
++            if (logContext != null && logContext != LoggerFactory.getILoggerFactory())
++                logContext.stop();
++        }
++    }
++    
++    /**
+      * Performs variable expansion in strings of the form "${name}". This just calls {@link #expand(String, boolean)},
+      * passing <code>false</code> for the second parameter, meaning that "$$" prefixed strings will be expanded. See
+      * the docs on {@link #expand(String, boolean)} for more details.

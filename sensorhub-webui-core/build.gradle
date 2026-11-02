@@ -14,6 +14,10 @@ rootProject.allprojects {
   }
 }
 
+configurations.configureEach {
+  exclude group: 'javax.servlet', module: 'javax.servlet-api'
+}
+
 dependencies {
   implementation project(':sensorhub-core')
   implementation project(':sensorhub-service-swe')
@@ -27,6 +31,9 @@ dependencies {
   compileOnly 'com.vaadin:vaadin-compatibility-client:' + vaadinVersion
   embeddedImpl 'com.vaadin:vaadin-compatibility-client-compiled:' + vaadinVersion
   embeddedImpl 'com.vaadin:vaadin-themes:' + vaadinVersion
+  
+  // force patched jsoup (Vaadin 8.14.3 pulls 1.14.3, CVE-2026-75140)
+  embeddedImpl 'org.jsoup:jsoup:1.23.2'
   
   compileOnly 'org.osgi:org.osgi.core:5.0.0'
   compileOnly 'org.apache.felix:org.apache.felix.bundlerepository:2.0.10'

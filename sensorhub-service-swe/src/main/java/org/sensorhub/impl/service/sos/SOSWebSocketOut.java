@@ -14,9 +14,9 @@ Copyright (C) 2012-2015 Sensia Software LLC. All Rights Reserved.
 
 package org.sensorhub.impl.service.sos;
 
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.StatusCode;
-import org.eclipse.jetty.websocket.api.WebSocketListener;
+import org.eclipse.jetty.ee8.websocket.api.Session;
+import org.eclipse.jetty.ee8.websocket.api.StatusCode;
+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
 import org.sensorhub.impl.service.WebSocketUtils;
 import org.sensorhub.impl.service.swe.WebSocketOutputStreamAsync;
 import org.slf4j.Logger;

@@ -244,6 +244,23 @@ public class ModuleUtils
     }
     
     /**
+     * Stops the separate logging context of a logger created by {@link #createModuleLogger(IModule)}.
+     * This closes the module's appenders, in particular its log file, which is required before the
+     * module data folder can be deleted (open files cannot be deleted on Windows).<br/>
+     * Loggers that belong to the default logging context are left untouched.
+     * @param logger Module logger to close (can be null)
+     */
+    public static void closeModuleLogger(Logger logger)
+    {
+        if (logger instanceof ch.qos.logback.classic.Logger)
+        {
+            LoggerContext logContext = ((ch.qos.logback.classic.Logger)logger).getLoggerContext();
+            if (logContext != null && logContext != LoggerFactory.getILoggerFactory())
+                logContext.stop();
+        }
+    }
+    
+    /**
      * Performs variable expansion in strings of the form "${name}". This just calls {@link #expand(String, boolean)},
      * passing <code>false</code> for the second parameter, meaning that "$$" prefixed strings will be expanded. See
      * the docs on {@link #expand(String, boolean)} for more details.
