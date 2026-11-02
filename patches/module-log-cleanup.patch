@@ -1,6 +1,8 @@
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java b/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java
+index 736ca0f55..9369cad00 100644
 --- a/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java
 +++ b/sensorhub-core/src/main/java/org/sensorhub/impl/module/AbstractModule.java
-@@ -29,6 +29,7 @@
+@@ -29,6 +29,7 @@ import org.sensorhub.utils.ConfigValidator;
  import org.sensorhub.utils.ModuleUtils;
  import org.sensorhub.utils.MsgUtils;
  import org.slf4j.Logger;
@@ -8,7 +10,7 @@
  import org.vast.util.Asserts;
  
  
-@@ -693,6 +694,22 @@
+@@ -693,6 +694,22 @@ public abstract class AbstractModule<ConfigType extends ModuleConfig> implements
      }
      
      
@@ -31,9 +33,11 @@
      @Override
      public String toString()
      {
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java b/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java
+index 57ce8d7ca..40f39025c 100644
 --- a/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java
 +++ b/sensorhub-core/src/main/java/org/sensorhub/impl/module/ModuleRegistry.java
-@@ -921,12 +921,17 @@
+@@ -921,12 +921,17 @@ public class ModuleRegistry implements IModuleManager<IModule<?>>, IEventListene
              if (module != null)
              {
                  module.stop();
@@ -52,12 +56,15 @@
                  handleEvent(new ModuleEvent(module, Type.DELETED));
              }
              
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java b/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
+index 26b883611..e3a0bfbf4 100644
 --- a/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
 +++ b/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
-@@ -244,6 +244,23 @@
+@@ -243,6 +243,23 @@ public class ModuleUtils
+         }
      }
      
-     /**
++    /**
 +     * Stops the separate logging context of a logger created by {@link #createModuleLogger(IModule)}.
 +     * This closes the module's appenders, in particular its log file, which is required before the
 +     * module data folder can be deleted (open files cannot be deleted on Windows).<br/>
@@ -74,7 +81,6 @@
 +        }
 +    }
 +    
-+    /**
+     /**
       * Performs variable expansion in strings of the form "${name}". This just calls {@link #expand(String, boolean)},
       * passing <code>false</code> for the second parameter, meaning that "$$" prefixed strings will be expanded. See
-      * the docs on {@link #expand(String, boolean)} for more details.
