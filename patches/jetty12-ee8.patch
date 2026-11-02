@@ -1,6 +1,103 @@
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java	2026-11-02 09:03:58.977626553 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java	2026-11-02 09:03:59.028678025 -0500
-@@ -15,7 +15,7 @@
+diff --git a/common.gradle b/common.gradle
+index 6fdde38ec..412054663 100644
+--- a/common.gradle
++++ b/common.gradle
+@@ -1,6 +1,28 @@
+ import java.nio.file.*;
+ 
+-ext.oshCoreVersion = '2.0.3'
++// OSH core version (semantic versioning: MAJOR.MINOR.PATCH[-PRERELEASE])
++// Modules built against this core can use it as a version suffix,
++// e.g. version = withOshCoreVersion('1.2.0') -> '1.2.0-3.0.0-beta'
++ext.oshCoreVersion = '3.0.0-beta'
++
++ext.withOshCoreVersion = { moduleVersion ->
++  return moduleVersion.toString() + '-' + oshCoreVersion
++}
++
++// Converts a semantic version to a valid OSGi version (MAJOR.MINOR.MICRO[.QUALIFIER]).
++// The pre-release/build part becomes the qualifier, with characters not allowed
++// in OSGi qualifiers ('.', '+') replaced by '_' so no information is lost:
++//   3.0.0-beta       -> 3.0.0.beta
++//   1.2.0-3.0.0-beta -> 1.2.0.3_0_0-beta
++ext.toOsgiVersion = { version ->
++  def m = (version.toString() =~ /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:[-+.](.+))?$/)
++  if (!m.matches())
++    return version.toString()
++  def osgiVersion = m.group(1) + '.' + (m.group(2) ?: '0') + '.' + (m.group(3) ?: '0')
++  if (m.group(4))
++    osgiVersion += '.' + m.group(4).replaceAll(/[^A-Za-z0-9_-]/, '_')
++  return osgiVersion
++}
+ 
+ 
+ buildscript {
+@@ -306,7 +328,9 @@ subprojects {
+           attributes 'Bundle-Name': project.description
+         if (project.details != null && !attributes['Bundle-Description'])
+           attributes 'Bundle-Description': project.details
+-        attributes 'Bundle-Version': project.version
++        // OSGi-compliant version for bundle resolution, full semantic version for everything else
++        attributes 'Bundle-Version': toOsgiVersion(project.version)
++        attributes 'Implementation-Version': project.version.toString()
+         if (project.buildNumber != null && !project.buildNumber.isEmpty())
+           attributes 'Bundle-BuildNumber': project.buildNumber
+         if (!attributes['Bundle-License'])
+diff --git a/dist/main/config.json b/dist/main/config.json
+index 505588c38..2ca844cbe 100644
+--- a/dist/main/config.json
++++ b/dist/main/config.json
+@@ -77,7 +77,7 @@
+     "autoStart": true
+   },
+   {
+-    "objClass": "org.sensorhub.impl.service.sweapi.SWEApiServiceConfig",
++    "objClass": "org.sensorhub.impl.service.consys.ConSysApiServiceConfig",
+     "databaseID": "0309491d-d5cb-4f2f-9b95-166179c66746",
+     "exposedResources": {
+       "objClass": "org.sensorhub.impl.datastore.view.ObsSystemDatabaseViewConfig",
+@@ -114,8 +114,8 @@
+     "enableSOAP": true,
+     "endPoint": "/api",
+     "id": "9d23a6a7-7455-41d1-9f1d-494be4e2463c",
+-    "moduleClass": "org.sensorhub.impl.service.sweapi.SWEApiService",
+-    "name": "SWE API HTTP Service",
++    "moduleClass": "org.sensorhub.impl.service.consys.ConSysApiService",
++    "name": "Connected Systems API Service",
+     "autoStart": true
+   }
+ ]
+diff --git a/sensorhub-core/build.gradle b/sensorhub-core/build.gradle
+index bcd8bc82a..d81b65a9b 100644
+--- a/sensorhub-core/build.gradle
++++ b/sensorhub-core/build.gradle
+@@ -9,10 +9,17 @@ dependencies {
+   embeddedApi project(':swe-common-om')
+   embeddedApi project(':sensorml-core')
+   api 'org.osgi:org.osgi.framework:1.10.0'
+-  embeddedApi 'org.eclipse.jetty:jetty-servlet:9.4.57.v20241219'
+-  embeddedApi 'org.eclipse.jetty:jetty-servlets:9.4.57.v20241219'
+-  embeddedApi 'org.eclipse.jetty.websocket:websocket-server:9.4.57.v20241219'
+-  embeddedApi 'org.eclipse.jetty:jetty-xml:9.4.57.v20241219'
++  // Jetty 12.1 with the ee8 environment (keeps javax.servlet API)
++  // fixes CVE-2026-2332 (jetty-http) and CVE-2026-10050 (jetty-security)
++  embeddedApi platform('org.eclipse.jetty:jetty-bom:12.1.14')
++  embeddedApi platform('org.eclipse.jetty.ee8:jetty-ee8-bom:12.1.14')
++  embeddedApi 'org.eclipse.jetty:jetty-xml'
++  embeddedApi 'org.eclipse.jetty.ee8:jetty-ee8-servlet'
++  embeddedApi 'org.eclipse.jetty.ee8:jetty-ee8-servlets'
++  embeddedApi 'org.eclipse.jetty.ee8.websocket:jetty-ee8-websocket-jetty-server'
++  // websocket client is provided by core so that only one OSGi bundle exports
++  // the shared Jetty websocket API packages (used by sensorhub-service-swe and add-ons)
++  embeddedApi 'org.eclipse.jetty.ee8.websocket:jetty-ee8-websocket-jetty-client'
+   embeddedApi 'javax.validation:validation-api:2.0.1.Final'
+   embeddedApi 'dev.failsafe:failsafe:3.3.2'
+   
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java b/sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java
+index 2e31e0636..f46efbabd 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/api/security/ISecurityManager.java
+@@ -15,7 +15,7 @@ Copyright (C) 2012-2015 Sensia Software LLC. All Rights Reserved.
  package org.sensorhub.api.security;
  
  import java.util.Collection;
@@ -9,36 +106,49 @@
  
  
  /**
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java	2026-11-02 09:03:58.977389618 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java	2026-11-02 09:04:44.146891896 -0500
-@@ -16,11 +16,13 @@
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java b/sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java
+index 231d3d827..f756b6d20 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java
+@@ -22,10 +22,10 @@ import java.util.concurrent.TimeoutException;
+ import java.util.concurrent.atomic.AtomicReference;
+ import javax.servlet.ServletRequest;
+ import javax.servlet.ServletResponse;
+-import org.eclipse.jetty.security.Authenticator;
+-import org.eclipse.jetty.security.ServerAuthException;
+-import org.eclipse.jetty.server.Authentication;
+-import org.eclipse.jetty.server.Authentication.User;
++import org.eclipse.jetty.ee8.security.Authenticator;
++import org.eclipse.jetty.ee8.security.ServerAuthException;
++import org.eclipse.jetty.ee8.nested.Authentication;
++import org.eclipse.jetty.ee8.nested.Authentication.User;
+ import org.sensorhub.api.ISensorHub;
+ import org.sensorhub.api.security.IAuthorizer;
+ import org.sensorhub.api.security.IPermission;
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java
+index b7dea1bba..cb61e9135 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java
+@@ -18,10 +18,10 @@ import javax.servlet.ServletRequest;
+ import javax.servlet.ServletResponse;
+ import javax.servlet.http.HttpServletRequest;
+ import javax.servlet.http.HttpServletResponse;
+-import org.eclipse.jetty.security.Authenticator;
+-import org.eclipse.jetty.security.ServerAuthException;
+-import org.eclipse.jetty.server.Authentication;
+-import org.eclipse.jetty.server.Authentication.User;
++import org.eclipse.jetty.ee8.security.Authenticator;
++import org.eclipse.jetty.ee8.security.ServerAuthException;
++import org.eclipse.jetty.ee8.nested.Authentication;
++import org.eclipse.jetty.ee8.nested.Authentication.User;
+ import org.slf4j.Logger;
+ import org.vast.util.Asserts;
  
- import java.security.Principal;
- import javax.security.auth.Subject;
--import javax.servlet.ServletRequest;
-+import java.util.function.Function;
- import org.eclipse.jetty.security.DefaultIdentityService;
- import org.eclipse.jetty.security.IdentityService;
- import org.eclipse.jetty.security.LoginService;
--import org.eclipse.jetty.server.UserIdentity;
-+import org.eclipse.jetty.security.UserIdentity;
-+import org.eclipse.jetty.server.Request;
-+import org.eclipse.jetty.server.Session;
- import org.eclipse.jetty.util.security.Credential;
- import org.sensorhub.api.security.ISecurityManager;
- import org.sensorhub.api.security.IUserInfo;
-@@ -93,7 +95,7 @@
- 
- 
-     @Override
--    public UserIdentity login(String username, Object credentials, ServletRequest request)
-+    public UserIdentity login(String username, Object credentials, Request request, Function<Boolean, Session> getOrCreateSession)
-     {
-         if (username == null)
-             return null;
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java	2026-11-02 09:03:58.977425208 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java	2026-11-02 10:43:19.286219551 -0500
-@@ -27,28 +27,32 @@
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java
+index ba97b421b..09652b2fd 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServer.java
+@@ -27,28 +27,32 @@ import javax.servlet.http.HttpServlet;
  import javax.servlet.http.HttpServletRequest;
  import javax.servlet.http.HttpServletResponse;
  
@@ -49,6 +159,7 @@
 -import org.eclipse.jetty.security.ConstraintSecurityHandler;
 -import org.eclipse.jetty.security.authentication.BasicAuthenticator;
 -import org.eclipse.jetty.security.authentication.ClientCertAuthenticator;
+-import org.eclipse.jetty.security.authentication.DigestAuthenticator;
 +import org.eclipse.jetty.ee8.security.Authenticator;
 +import org.eclipse.jetty.ee8.security.ConstraintMapping;
 +import org.eclipse.jetty.ee8.security.ConstraintSecurityHandler;
@@ -77,12 +188,11 @@
 +import org.eclipse.jetty.util.resource.ResourceFactory;
 +import org.eclipse.jetty.ee8.nested.ServletConstraint;
  import org.eclipse.jetty.util.ssl.SslContextFactory;
--import org.eclipse.jetty.websocket.server.config.JettyWebSocketServletContainerInitializer;
 +import org.eclipse.jetty.ee8.websocket.server.config.JettyWebSocketServletContainerInitializer;
  import org.eclipse.jetty.xml.XmlConfiguration;
  import org.sensorhub.api.common.SensorHubException;
  import org.sensorhub.api.module.ModuleEvent.ModuleState;
-@@ -89,6 +93,7 @@
+@@ -89,6 +93,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
      Server server;
      ServletContextHandler servletHandler;
      ConstraintSecurityHandler jettySecurityHandler;
@@ -90,7 +200,7 @@
      
      
      public HttpServer()
-@@ -118,7 +123,8 @@
+@@ -118,7 +123,8 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
              server = new Server();
              ServerConnector http = null;
              ServerConnector https = null;
@@ -100,7 +210,7 @@
              
              // HTTP connector
              HttpConfiguration httpConfig = new HttpConfiguration();
-@@ -139,7 +145,7 @@
+@@ -139,7 +145,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
              {
                  KeyStoreInfo keyStoreInfo = getKeyStoreInfo(config);
                  
@@ -109,7 +219,7 @@
                  sslContextFactory.setKeyStorePath(new File(keyStoreInfo.getKeyStorePath()).getAbsolutePath());
                  sslContextFactory.setKeyStorePassword(keyStoreInfo.getKeyStorePassword());
                  sslContextFactory.setKeyManagerPassword(keyStoreInfo.getKeyStorePassword());
-@@ -164,16 +170,33 @@
+@@ -164,16 +170,33 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
              
              // static content
              ContextHandler fileResourceContext = null;
@@ -146,7 +256,7 @@
  
                  //fileResourceContext.clearAliasChecks();
                  //fileResourceContext.addAliasCheck(new SymlinkAllowedResourceAliasChecker(fileResourceContext));
-@@ -188,7 +211,13 @@
+@@ -188,7 +211,13 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                  // create servlet handler
                  this.servletHandler = new ServletContextHandler(ServletContextHandler.SESSIONS);
                  servletHandler.setContextPath(config.servletsRootUrl);
@@ -161,9 +271,12 @@
                  getLogger().info("Servlets root is " + config.servletsRootUrl);
                  
                  // security handler
-@@ -203,7 +232,11 @@
+@@ -202,10 +231,12 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
+                     
                      if (config.authMethod == AuthMethod.BASIC)
                          jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new BasicAuthenticator(), getLogger()));
+-                    else if (config.authMethod == AuthMethod.DIGEST)
+-                        jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new DigestAuthenticator(), getLogger()));
                      else if (config.authMethod == AuthMethod.CERT)
 -                        jettySecurityHandler.setAuthenticator(new HttpLogoutWrapper(new ClientCertAuthenticator(), getLogger()));
 +                    {
@@ -174,7 +287,7 @@
                      else if (config.authMethod == AuthMethod.EXTERNAL)
                      {
                          Authenticator authenticator = securityManager.getAuthenticator();
-@@ -259,7 +292,7 @@
+@@ -261,7 +292,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
              {
                  try
                  {
@@ -183,11 +296,14 @@
                      XmlConfiguration xmlConfig = new XmlConfiguration(configFile);
                      
                      // assign IDs to existing beans so they can be reconfigured
-@@ -283,12 +316,18 @@
+@@ -283,12 +314,20 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
+                 {
+                     throw new IOException("Cannot configure Jetty using external XML file", e);
                  }
-             }
- 
--            JettyWebSocketServletContainerInitializer.configure(servletHandler, null);
+-            }            
+-            
++            }
++
 +            if (servletHandler != null)
 +            {
 +                JettyWebSocketServletContainerInitializer.configure(servletHandler, null);
@@ -196,7 +312,7 @@
 +                if (servletHandler.getErrorHandler() != null)
 +                    servletHandler.getErrorHandler().setShowServlet(false);
 +            }
- 
++
              server.start();
              getLogger().info("HTTP server started on port " + config.httpPort);
              
@@ -204,7 +320,7 @@
              setState(ModuleState.STARTED);
          }
          catch (Exception e)
-@@ -308,6 +347,7 @@
+@@ -308,6 +347,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
                  server.stop();
                  servletHandler = null;
                  jettySecurityHandler = null;
@@ -212,7 +328,7 @@
                  server = null;
              }
          }
-@@ -395,7 +435,7 @@
+@@ -395,7 +435,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
      
      public void addServletSecurity(String pathSpec, boolean requireAuth)
      {
@@ -221,7 +337,7 @@
      }
      
      
-@@ -403,7 +443,7 @@
+@@ -403,7 +443,7 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
      {
          if (jettySecurityHandler != null)
          {
@@ -230,170 +346,319 @@
              constraint.setRoles(roles);
              constraint.setAuthenticate(requireAuth);
              ConstraintMapping cm = new ConstraintMapping();
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java	2026-11-02 09:03:58.977481241 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java	2026-11-02 09:03:59.030095479 -0500
-@@ -17,7 +17,7 @@
- import java.net.InetSocketAddress;
- import java.net.SocketAddress;
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServerConfig.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServerConfig.java
+index 0c38a71d6..071a7e5ae 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServerConfig.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpServerConfig.java
+@@ -31,7 +31,7 @@ public class HttpServerConfig extends ModuleConfig
+ {
+     public enum AuthMethod
+     {
+-        NONE, BASIC, DIGEST, CERT,
++        NONE, BASIC, CERT,
+         EXTERNAL // provided by external module
+     }
+     
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java
+index a287e422c..4c8e707aa 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/OshLoginService.java
+@@ -16,11 +16,13 @@ package org.sensorhub.impl.service;
+ 
+ import java.security.Principal;
+ import javax.security.auth.Subject;
+-import javax.servlet.ServletRequest;
++import java.util.function.Function;
+ import org.eclipse.jetty.security.DefaultIdentityService;
+ import org.eclipse.jetty.security.IdentityService;
+ import org.eclipse.jetty.security.LoginService;
+-import org.eclipse.jetty.server.UserIdentity;
++import org.eclipse.jetty.security.UserIdentity;
++import org.eclipse.jetty.server.Request;
++import org.eclipse.jetty.server.Session;
+ import org.eclipse.jetty.util.security.Credential;
+ import org.sensorhub.api.security.ISecurityManager;
+ import org.sensorhub.api.security.IUserInfo;
+@@ -93,7 +95,7 @@ public class OshLoginService implements LoginService
+ 
+ 
+     @Override
+-    public UserIdentity login(String username, Object credentials, ServletRequest request)
++    public UserIdentity login(String username, Object credentials, Request request, Function<Boolean, Session> getOrCreateSession)
+     {
+         if (username == null)
+             return null;
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketOutputStream.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketOutputStream.java
+index e5ee8876d..27b5faf36 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketOutputStream.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketOutputStream.java
+@@ -18,8 +18,8 @@ import java.io.ByteArrayOutputStream;
+ import java.io.EOFException;
+ import java.io.IOException;
+ import java.nio.ByteBuffer;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.StatusCode;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.StatusCode;
+ import org.slf4j.Logger;
+ import org.vast.util.Asserts;
+ 
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java b/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java
+index 7b8a92487..8c7d2ad0b 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/impl/service/WebSocketUtils.java
+@@ -14,8 +14,10 @@ Copyright (C) 2012-2016 Sensia Software LLC. All Rights Reserved.
+ 
+ package org.sensorhub.impl.service;
+ 
++import java.net.InetSocketAddress;
++import java.net.SocketAddress;
  import java.security.Principal;
 -import org.eclipse.jetty.websocket.api.Session;
 +import org.eclipse.jetty.ee8.websocket.api.Session;
  import org.slf4j.Logger;
  
  
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java	2026-11-02 09:03:58.977493677 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/impl/service/HttpLogoutWrapper.java	2026-11-02 09:03:59.030370233 -0500
-@@ -18,10 +18,10 @@
- import javax.servlet.ServletResponse;
+@@ -54,7 +56,10 @@ public class WebSocketUtils
+     {
+         if (log.isDebugEnabled())
+         {
+-            String remoteIp = session.getRemoteAddress().getAddress().getHostAddress();
++            SocketAddress addr = session.getRemoteAddress();
++            String remoteIp = (addr instanceof InetSocketAddress)
++                    ? ((InetSocketAddress) addr).getAddress().getHostAddress()
++                    : String.valueOf(addr);
+             Principal user = session.getUpgradeRequest().getUserPrincipal();
+             String userID = user != null ? user.getName() : "anonymous";
+             log.debug(CONNECT_MSG, getSessionID(session), remoteIp, userID);
+diff --git a/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java b/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
+index 26b883611..db4221e10 100644
+--- a/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
++++ b/sensorhub-core/src/main/java/org/sensorhub/utils/ModuleUtils.java
+@@ -41,6 +41,7 @@ public class ModuleUtils
+     public static final String MODULE_NAME = "Bundle-Name";
+     public static final String MODULE_DESC = "Bundle-Description";
+     public static final String MODULE_VERSION = "Bundle-Version";
++    public static final String MODULE_SEMVER = "Implementation-Version";
+     public static final String MODULE_VENDOR = "Bundle-Vendor";
+     public static final String MODULE_BUILD = "Bundle-BuildNumber";
+     public static final String MODULE_DEPS = "OSH-Dependencies";
+@@ -139,7 +140,9 @@ public class ModuleUtils
+             Attributes attributes = manifest.getMainAttributes();
+             name = attributes.getValue(MODULE_NAME);
+             desc = attributes.getValue(MODULE_DESC);
+-            version = attributes.getValue(MODULE_VERSION);
++            // prefer full semantic version, Bundle-Version is the OSGi-converted form
++            String semver = attributes.getValue(MODULE_SEMVER);
++            version = semver != null ? semver : attributes.getValue(MODULE_VERSION);
+             vendor = attributes.getValue(MODULE_VENDOR);
+         }
+         
+diff --git a/sensorhub-core/src/test/java/org/sensorhub/impl/service/TestHttpServer.java b/sensorhub-core/src/test/java/org/sensorhub/impl/service/TestHttpServer.java
+index babf826cd..316a1bbcf 100644
+--- a/sensorhub-core/src/test/java/org/sensorhub/impl/service/TestHttpServer.java
++++ b/sensorhub-core/src/test/java/org/sensorhub/impl/service/TestHttpServer.java
+@@ -161,10 +161,10 @@ public class TestHttpServer
+     }
+     
+     
+-    @Test
+-    public void testConnectWithDigestAuth() throws Exception
++    @Test(expected = IllegalArgumentException.class)
++    public void testDigestAuthIsNotSupported()
+     {
+-        testConnect(AuthMethod.DIGEST);
++        AuthMethod.valueOf("DIGEST");
+     }
+     
+     
+diff --git a/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java b/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java
+index e682d1421..edb8df438 100644
+--- a/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java
++++ b/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java
+@@ -31,13 +31,7 @@ import javax.servlet.http.HttpServlet;
  import javax.servlet.http.HttpServletRequest;
  import javax.servlet.http.HttpServletResponse;
--import org.eclipse.jetty.security.Authenticator;
--import org.eclipse.jetty.security.ServerAuthException;
--import org.eclipse.jetty.server.Authentication;
--import org.eclipse.jetty.server.Authentication.User;
-+import org.eclipse.jetty.ee8.security.Authenticator;
-+import org.eclipse.jetty.ee8.security.ServerAuthException;
-+import org.eclipse.jetty.ee8.nested.Authentication;
-+import org.eclipse.jetty.ee8.nested.Authentication.User;
- import org.slf4j.Logger;
- import org.vast.util.Asserts;
- 
---- ../orig/./sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java	2026-11-02 09:03:58.977537632 -0500
-+++ ./sensorhub-core/src/main/java/org/sensorhub/impl/security/SecurityManagerImpl.java	2026-11-02 09:03:59.030877279 -0500
-@@ -22,10 +22,10 @@
- import java.util.concurrent.atomic.AtomicReference;
- import javax.servlet.ServletRequest;
- import javax.servlet.ServletResponse;
--import org.eclipse.jetty.security.Authenticator;
--import org.eclipse.jetty.security.ServerAuthException;
--import org.eclipse.jetty.server.Authentication;
--import org.eclipse.jetty.server.Authentication.User;
-+import org.eclipse.jetty.ee8.security.Authenticator;
-+import org.eclipse.jetty.ee8.security.ServerAuthException;
-+import org.eclipse.jetty.ee8.nested.Authentication;
-+import org.eclipse.jetty.ee8.nested.Authentication.User;
- import org.sensorhub.api.ISensorHub;
- import org.sensorhub.api.security.IAuthorizer;
- import org.sensorhub.api.security.IPermission;
---- ../orig/./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java	2026-11-02 09:03:58.977779829 -0500
-+++ ./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java	2026-11-02 09:03:59.031366886 -0500
-@@ -22,9 +22,9 @@
- import java.util.List;
- import net.opengis.swe.v20.DataBlock;
- import net.opengis.swe.v20.DataComponent;
--import org.eclipse.jetty.websocket.api.Session;
--import org.eclipse.jetty.websocket.api.WebSocketAdapter;
--import org.eclipse.jetty.websocket.client.WebSocketClient;
-+import org.eclipse.jetty.ee8.websocket.api.Session;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
-+import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
- import org.junit.After;
- import org.junit.Before;
- import org.junit.Test;
---- ../orig/./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java	2026-11-02 09:03:58.977806532 -0500
-+++ ./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java	2026-11-02 09:03:59.031696853 -0500
-@@ -21,8 +21,8 @@
- import java.util.concurrent.Future;
- import java.util.concurrent.TimeUnit;
- import java.util.concurrent.TimeoutException;
--import org.eclipse.jetty.websocket.api.WebSocketAdapter;
--import org.eclipse.jetty.websocket.client.WebSocketClient;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
-+import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
- import org.junit.After;
- import org.junit.Before;
- import org.junit.Test;
---- ../orig/./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java	2026-11-02 09:03:58.977837673 -0500
-+++ ./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java	2026-11-02 09:03:59.032318709 -0500
-@@ -25,9 +25,9 @@
- import net.opengis.swe.v20.Quantity;
- import net.opengis.swe.v20.Time;
- import net.opengis.swe.v20.Vector;
--import org.eclipse.jetty.websocket.api.Session;
--import org.eclipse.jetty.websocket.api.WebSocketAdapter;
--import org.eclipse.jetty.websocket.client.WebSocketClient;
-+import org.eclipse.jetty.ee8.websocket.api.Session;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
-+import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
- import org.junit.After;
- import org.junit.Before;
- import org.junit.Test;
---- ../orig/./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java	2026-11-02 09:03:58.977863041 -0500
-+++ ./sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java	2026-11-02 09:03:59.033669767 -0500
-@@ -38,8 +38,8 @@
- import java.util.concurrent.locks.Condition;
- import java.util.concurrent.locks.ReentrantLock;
- import org.apache.commons.io.IOUtils;
--import org.eclipse.jetty.websocket.api.WebSocketAdapter;
--import org.eclipse.jetty.websocket.client.WebSocketClient;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
-+import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
- import org.junit.After;
- import org.junit.Before;
- import org.junit.Test;
---- ../orig/./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java	2026-11-02 09:03:58.978034343 -0500
-+++ ./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java	2026-11-02 09:03:59.034251732 -0500
-@@ -15,9 +15,9 @@
- package org.sensorhub.impl.service.sps;
- 
- import java.io.ByteArrayInputStream;
--import org.eclipse.jetty.websocket.api.Session;
--import org.eclipse.jetty.websocket.api.StatusCode;
--import org.eclipse.jetty.websocket.api.WebSocketListener;
-+import org.eclipse.jetty.ee8.websocket.api.Session;
-+import org.eclipse.jetty.ee8.websocket.api.StatusCode;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
- import org.sensorhub.impl.service.WebSocketUtils;
- import org.slf4j.Logger;
- import org.vast.cdm.common.DataStreamParser;
---- ../orig/./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java	2026-11-02 09:03:58.978081252 -0500
-+++ ./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java	2026-11-02 09:03:59.034809360 -0500
-@@ -26,8 +26,8 @@
- import javax.xml.namespace.QName;
- import javax.xml.stream.XMLStreamException;
- import javax.xml.stream.XMLStreamWriter;
--import org.eclipse.jetty.websocket.api.WebSocketListener;
--import org.eclipse.jetty.websocket.server.JettyWebSocketServerContainer;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.eclipse.jetty.io.EofException;
+-import org.eclipse.jetty.websocket.api.WebSocketBehavior;
+-import org.eclipse.jetty.websocket.api.WebSocketPolicy;
+-import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
+-import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
+-import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse;
+-import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
+-import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 +import org.eclipse.jetty.ee8.websocket.server.JettyWebSocketServerContainer;
- import org.sensorhub.api.ISensorHub;
- import org.sensorhub.api.database.IObsSystemDatabase;
- import org.sensorhub.api.datastore.DataStoreException;
---- ../orig/./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java	2026-11-02 09:03:58.978121706 -0500
-+++ ./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java	2026-11-02 09:03:59.035058067 -0500
-@@ -16,9 +16,9 @@
+ import org.sensorhub.api.security.IPermission;
+ import org.sensorhub.api.security.ISecurityManager;
+ import org.sensorhub.impl.service.consys.resource.IResourceHandler;
+@@ -61,9 +55,9 @@ public abstract class RestApiServlet extends HttpServlet
+     protected final ScheduledExecutorService threadPool;
+     protected final Logger log;
+     protected final String rootUrl;
+-    protected WebSocketServletFactory wsFactory;
+-    
+-    
++    protected JettyWebSocketServerContainer wsContainer;
++
++
+     public static class ResourcePermissions
+     {
+         public IPermission get;
+@@ -95,16 +89,13 @@ public abstract class RestApiServlet extends HttpServlet
+     {
+         super.init(config);
  
- import java.io.ByteArrayInputStream;
- import java.util.function.Consumer;
+-        // create websocket factory
+-        try
+-        {
+-            WebSocketPolicy wsPolicy = new WebSocketPolicy(WebSocketBehavior.SERVER);
+-            wsFactory = new WebSocketServerFactory(getServletContext(), wsPolicy);
+-            wsFactory.start();
+-        }
+-        catch (Exception e)
++        // get websocket container (lifecycle is managed by Jetty, no need to start/stop it)
++        wsContainer = JettyWebSocketServerContainer.getContainer(getServletContext());
++        if (wsContainer == null)
+         {
+-            throw new ServletException("Cannot initialize websocket factory", e);
++            throw new ServletException("WebSocket container not available. " +
++                    "JettyWebSocketServletContainerInitializer.configure() must be called " +
++                    "on the ServletContextHandler before the server is started");
+         }
+     }
+ 
+@@ -112,16 +103,9 @@ public abstract class RestApiServlet extends HttpServlet
+     @Override
+     public void destroy()
+     {
+-        // destroy websocket factory
+-        try
+-        {
+-            if (wsFactory != null)
+-                wsFactory.stop();
+-        }
+-        catch (Exception e)
+-        {
+-            log.error("Cannot stop websocket factory", e);
+-        }
++        // nothing to do: websocket container is stopped together with the servlet context
++        wsContainer = null;
++        super.destroy();
+     }
+     
+     
+@@ -376,12 +360,18 @@ public abstract class RestApiServlet extends HttpServlet
+             sendError(SC_INTERNAL_SERVER_ERROR, INTERNAL_ERROR_MSG, req, resp);
+         }
+     }
+-    
+-    
++
++
++    protected boolean isWebSocketUpgradeRequest(HttpServletRequest req)
++    {
++        return "websocket".equalsIgnoreCase(req.getHeader("Upgrade"));
++    }
++
++
+     protected RequestContext createContext(HttpServletRequest req, HttpServletResponse resp) throws IOException
+     {
+         // check if we have an upgrade request for websockets
+-        if (wsFactory.isUpgradeRequest(req, resp))
++        if (wsContainer != null && isWebSocketUpgradeRequest(req))
+         {
+             /*if (req.getSubProtocols().contains("ingest"))
+             {
+@@ -392,21 +382,14 @@ public abstract class RestApiServlet extends HttpServlet
+             else
+             }*/
+             var ws = new WebSocketOut(getLogger());
+-            
+-            wsFactory.acceptWebSocket(new WebSocketCreator() {
+-                @Override
+-                public Object createWebSocket(ServletUpgradeRequest req, ServletUpgradeResponse resp)
+-                {
+-                    return ws;
+-                }
+-            }, req, resp);
+-            
+-            return new RequestContext(this, req, resp, ws);
++
++            boolean upgraded = wsContainer.upgrade((upgradeReq, upgradeResp) -> ws, req, resp);
++            if (upgraded)
++                return new RequestContext(this, req, resp, ws);
+         }
+         
+         // else just handle as regular HTTP request
+-        else
+-            return new RequestContext(this, req, resp);
++        return new RequestContext(this, req, resp);
+     }
+     
+     
+@@ -441,7 +424,7 @@ public abstract class RestApiServlet extends HttpServlet
+         }
+         
+         // detect websocket upgrade
+-        if ("websocket".equalsIgnoreCase(req.getHeader("Upgrade")))
++        if (isWebSocketUpgradeRequest(req))
+             method += "/Websocket";
+         
+         // append decoded request if any
+@@ -457,8 +440,8 @@ public abstract class RestApiServlet extends HttpServlet
+         else
+             log.info(LOG_REQUEST_MSG, method, url, query, ip, user);
+     }
+-    
+-    
++
++
+     /*public void sendError(int code, String mimeType, HttpServletResponse resp)
+     {
+         sendError(code, null, mimeType, resp);
+diff --git a/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/stream/WebSocketOut.java b/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/stream/WebSocketOut.java
+index 74286d5a7..d889db7d3 100644
+--- a/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/stream/WebSocketOut.java
++++ b/sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/stream/WebSocketOut.java
+@@ -17,9 +17,9 @@ package org.sensorhub.impl.service.consys.stream;
+ import java.io.IOException;
+ import java.io.OutputStream;
+ import java.util.concurrent.atomic.AtomicBoolean;
 -import org.eclipse.jetty.websocket.api.Session;
 -import org.eclipse.jetty.websocket.api.StatusCode;
 -import org.eclipse.jetty.websocket.api.WebSocketListener;
 +import org.eclipse.jetty.ee8.websocket.api.Session;
 +import org.eclipse.jetty.ee8.websocket.api.StatusCode;
 +import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.impl.service.WebSocketOutputStream;
  import org.sensorhub.impl.service.WebSocketUtils;
- import org.slf4j.Logger;
- import org.vast.cdm.common.DataStreamParser;
---- ../orig/./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java	2026-11-02 09:03:58.978137624 -0500
-+++ ./sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java	2026-11-02 09:03:59.035541181 -0500
-@@ -53,7 +53,7 @@
- import net.opengis.swe.v20.DataBlock;
- import net.opengis.swe.v20.DataComponent;
- import net.opengis.swe.v20.DataEncoding;
--import org.eclipse.jetty.websocket.api.WebSocketListener;
-+import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
- import org.sensorhub.api.common.SensorHubException;
- import org.sensorhub.api.data.IDataStreamInfo;
- import org.sensorhub.api.datastore.obs.DataStreamFilter;
---- ../orig/./sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java	2026-11-02 09:03:58.978254842 -0500
-+++ ./sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java	2026-11-02 09:03:59.036359194 -0500
-@@ -29,12 +29,12 @@
+ import org.sensorhub.impl.service.consys.resource.RequestContext;
+diff --git a/sensorhub-service-swe/build.gradle b/sensorhub-service-swe/build.gradle
+index 4ab7f6a9f..9daffeb54 100644
+--- a/sensorhub-service-swe/build.gradle
++++ b/sensorhub-service-swe/build.gradle
+@@ -3,7 +3,9 @@ ext.details = 'Implementation of OGC SWE standard interfaces as OSH services and
+ 
+ dependencies {
+   implementation project(':sensorhub-core')
+-  
++  // Jetty websocket client is provided by sensorhub-core (embedding it here too
++  // makes two bundles export the same Jetty packages and breaks OSGi resolution)
++
+   embeddedApi(project(':ogc-services-sos')) {
+     // exclude from embedded jars, already provided by sensorhub-core
+     exclude group: 'org.vast.opengis', module: 'swe-common-om' 
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java
+index e6f394888..ed416b30d 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/client/sos/SOSClient.java
+@@ -29,12 +29,12 @@ import java.util.concurrent.TimeUnit;
  
  import javax.servlet.http.HttpServletResponse;
  
 -import org.eclipse.jetty.client.util.BasicAuthentication;
 -import org.eclipse.jetty.websocket.api.Session;
--import org.eclipse.jetty.websocket.api.exceptions.UpgradeException;
+-import org.eclipse.jetty.websocket.api.UpgradeException;
 -import org.eclipse.jetty.websocket.api.WebSocketAdapter;
 -import org.eclipse.jetty.websocket.api.WebSocketListener;
 -import org.eclipse.jetty.websocket.client.WebSocketClient;
@@ -406,9 +671,339 @@
  import org.sensorhub.api.common.SensorHubException;
  import org.slf4j.Logger;
  import org.slf4j.LoggerFactory;
---- ../orig/./sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java	2026-11-02 09:03:58.978383300 -0500
-+++ ./sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java	2026-11-02 10:44:04.793775039 -0500
-@@ -21,7 +21,7 @@
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java
+index c7ecc462e..4ea3ad2de 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSServlet.java
+@@ -53,7 +53,7 @@ import net.opengis.swe.v20.BinaryMember;
+ import net.opengis.swe.v20.DataBlock;
+ import net.opengis.swe.v20.DataComponent;
+ import net.opengis.swe.v20.DataEncoding;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.api.common.SensorHubException;
+ import org.sensorhub.api.data.IDataStreamInfo;
+ import org.sensorhub.api.datastore.obs.DataStreamFilter;
+@@ -248,7 +248,7 @@ public class SOSServlet extends SWEServlet
+             securityHandler.checkPermission(securityHandler.rootPerm);
+             
+             // check if we have an upgrade request for websockets
+-            if (wsFactory.isUpgradeRequest(req, resp))
++            if (isWebSocketUpgradeRequest(req))
+             {
+                 // parse request
+                 try
+@@ -293,8 +293,7 @@ public class SOSServlet extends SWEServlet
+             securityHandler.clearCurrentUser();
+         }
+     }
+-    
+-    
++
+     @Override
+     public void handleRequest(OWSRequest request) throws IOException, OWSException
+     {
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java
+index 0b5a615c1..144a9ece6 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketIn.java
+@@ -16,9 +16,9 @@ package org.sensorhub.impl.service.sos;
+ 
+ import java.io.ByteArrayInputStream;
+ import java.util.function.Consumer;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.StatusCode;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.StatusCode;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.impl.service.WebSocketUtils;
+ import org.slf4j.Logger;
+ import org.vast.cdm.common.DataStreamParser;
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketOut.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketOut.java
+index c05ef91ee..4313128cb 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketOut.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sos/SOSWebSocketOut.java
+@@ -14,9 +14,9 @@ Copyright (C) 2012-2015 Sensia Software LLC. All Rights Reserved.
+ 
+ package org.sensorhub.impl.service.sos;
+ 
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.StatusCode;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.StatusCode;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.impl.service.WebSocketUtils;
+ import org.sensorhub.impl.service.swe.WebSocketOutputStreamAsync;
+ import org.slf4j.Logger;
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSServlet.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSServlet.java
+index fbcafa20d..99e3aa0bc 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSServlet.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSServlet.java
+@@ -158,7 +158,7 @@ public class SPSServlet extends SWEServlet
+         OWSRequest owsRequest = super.parseRequest(req, resp, isXmlRequest);
+ 
+         // detect websocket request
+-        if (wsFactory.isUpgradeRequest(req, resp))
++        if (isWebSocketUpgradeRequest(req))
+         {
+             if (owsRequest instanceof ConnectTaskingRequest)
+                 owsRequest.getExtensions().put(EXT_WS, true);
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java
+index 4aff49ddb..27e6688f3 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketIn.java
+@@ -15,9 +15,9 @@ Copyright (C) 2016-2017 Sensia Software LLC. All Rights Reserved.
+ package org.sensorhub.impl.service.sps;
+ 
+ import java.io.ByteArrayInputStream;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.StatusCode;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.StatusCode;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.impl.service.WebSocketUtils;
+ import org.slf4j.Logger;
+ import org.vast.cdm.common.DataStreamParser;
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketOut.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketOut.java
+index 093fb917f..df5d9b444 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketOut.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/sps/SPSWebSocketOut.java
+@@ -17,9 +17,9 @@ package org.sensorhub.impl.service.sps;
+ import java.io.IOException;
+ import java.util.concurrent.Flow.Subscriber;
+ import java.util.concurrent.Flow.Subscription;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.StatusCode;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.StatusCode;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
+ import org.sensorhub.impl.service.WebSocketOutputStream;
+ import org.sensorhub.impl.service.WebSocketUtils;
+ import org.slf4j.Logger;
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java
+index 70655c912..40425152a 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/SWEServlet.java
+@@ -26,14 +26,8 @@ import javax.servlet.http.HttpServletResponse;
+ import javax.xml.namespace.QName;
+ import javax.xml.stream.XMLStreamException;
+ import javax.xml.stream.XMLStreamWriter;
+-import org.eclipse.jetty.websocket.api.WebSocketBehavior;
+-import org.eclipse.jetty.websocket.api.WebSocketListener;
+-import org.eclipse.jetty.websocket.api.WebSocketPolicy;
+-import org.eclipse.jetty.websocket.server.WebSocketServerFactory;
+-import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
+-import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse;
+-import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
+-import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketListener;
++import org.eclipse.jetty.ee8.websocket.server.JettyWebSocketServerContainer;
+ import org.sensorhub.api.ISensorHub;
+ import org.sensorhub.api.database.IObsSystemDatabase;
+ import org.sensorhub.api.datastore.DataStoreException;
+@@ -86,9 +80,9 @@ public abstract class SWEServlet extends OWSServlet
+     protected final transient SystemDatabaseTransactionHandler transactionHandler;
+     
+     protected final transient AtomicLong lastGetCapsRequest = new AtomicLong();
+-    protected transient WebSocketServletFactory wsFactory;
+-    
+-    
++    protected transient JettyWebSocketServerContainer wsContainer;
++
++
+     protected SWEServlet(SWEService<?> service, OWSUtils owsUtils, Logger log)
+     {
+         super(owsUtils, log);
+@@ -106,6 +100,12 @@ public abstract class SWEServlet extends OWSServlet
+     public abstract OWSServiceCapabilities getCapabilities();
+ 
+ 
++    protected boolean isWebSocketUpgradeRequest(HttpServletRequest req)
++    {
++        return "GET".equalsIgnoreCase(req.getMethod()) &&
++                "websocket".equalsIgnoreCase(req.getHeader("Upgrade"));
++    }
++
+     protected void handleRequest(GetCapabilitiesRequest request) throws IOException, OWSException
+     {
+         // check that version 2.0.0 is supported by client
+@@ -352,13 +352,16 @@ public abstract class SWEServlet extends OWSServlet
+ 
+     protected void acceptWebSocket(final OWSRequest owsReq, final WebSocketListener socket) throws IOException
+     {
+-        wsFactory.acceptWebSocket(new WebSocketCreator() {
+-            @Override
+-            public Object createWebSocket(ServletUpgradeRequest req, ServletUpgradeResponse resp)
+-            {
+-                return socket;
+-            }
+-        }, owsReq.getHttpRequest(), owsReq.getHttpResponse());
++        if (wsContainer == null)
++            throw new IOException("WebSocket support is not initialized on this servlet context");
++
++        boolean upgraded = wsContainer.upgrade(
++                (upgradeReq, upgradeResp) -> socket,
++                owsReq.getHttpRequest(),
++                owsReq.getHttpResponse());
++
++        if (!upgraded)
++            throw new IOException("WebSocket upgrade failed");
+     }
+     
+     
+@@ -417,16 +420,13 @@ public abstract class SWEServlet extends OWSServlet
+     {
+         super.init(config);
+ 
+-        // create websocket factory
+-        try
+-        {
+-            WebSocketPolicy wsPolicy = new WebSocketPolicy(WebSocketBehavior.SERVER);
+-            wsFactory = new WebSocketServerFactory(getServletContext(), wsPolicy);
+-            wsFactory.start();
+-        }
+-        catch (Exception e)
++        // get websocket container (lifecycle is managed by Jetty, no need to start/stop it)
++        wsContainer = JettyWebSocketServerContainer.getContainer(getServletContext());
++        if (wsContainer == null)
+         {
+-            throw new ServletException("Cannot initialize websocket factory", e);
++            throw new ServletException("WebSocket container not available. " +
++                    "JettyWebSocketServletContainerInitializer.configure() must be called " +
++                    "on the ServletContextHandler before the server is started");
+         }
+     }
+ 
+@@ -434,15 +434,9 @@ public abstract class SWEServlet extends OWSServlet
+     @Override
+     public void destroy()
+     {
+-        // stop websocket factory
+-        try
+-        {
+-            wsFactory.stop();
+-        }
+-        catch (Exception e)
+-        {
+-            log.error("Cannot stop websocket factory", e);
+-        }
++        // nothing to stop: websocket container is stopped together with the servlet context
++        wsContainer = null;
++        super.destroy();
+     }
+     
+ 
+diff --git a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/WebSocketOutputStreamAsync.java b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/WebSocketOutputStreamAsync.java
+index 010caeb60..7acc638fd 100644
+--- a/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/WebSocketOutputStreamAsync.java
++++ b/sensorhub-service-swe/src/main/java/org/sensorhub/impl/service/swe/WebSocketOutputStreamAsync.java
+@@ -15,7 +15,7 @@ Copyright (C) 2012-2015 Sensia Software LLC. All Rights Reserved.
+ package org.sensorhub.impl.service.swe;
+ 
+ import javax.servlet.WriteListener;
+-import org.eclipse.jetty.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.Session;
+ import org.sensorhub.impl.service.WebSocketOutputStream;
+ import org.slf4j.Logger;
+ 
+diff --git a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java
+index 93c4e187d..969742fd5 100644
+--- a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java
++++ b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSService.java
+@@ -38,8 +38,8 @@ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.locks.Condition;
+ import java.util.concurrent.locks.ReentrantLock;
+ import org.apache.commons.io.IOUtils;
+-import org.eclipse.jetty.websocket.api.WebSocketAdapter;
+-import org.eclipse.jetty.websocket.client.WebSocketClient;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
++import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.Test;
+diff --git a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java
+index 86671fbaa..0d5630c41 100644
+--- a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java
++++ b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sos/TestSOSTService.java
+@@ -25,9 +25,9 @@ import net.opengis.swe.v20.DataStream;
+ import net.opengis.swe.v20.Quantity;
+ import net.opengis.swe.v20.Time;
+ import net.opengis.swe.v20.Vector;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.WebSocketAdapter;
+-import org.eclipse.jetty.websocket.client.WebSocketClient;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
++import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.Test;
+diff --git a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java
+index 8b98f431b..daf8692a5 100644
+--- a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java
++++ b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSService.java
+@@ -22,9 +22,9 @@ import java.net.URL;
+ import java.util.List;
+ import net.opengis.swe.v20.DataBlock;
+ import net.opengis.swe.v20.DataComponent;
+-import org.eclipse.jetty.websocket.api.Session;
+-import org.eclipse.jetty.websocket.api.WebSocketAdapter;
+-import org.eclipse.jetty.websocket.client.WebSocketClient;
++import org.eclipse.jetty.ee8.websocket.api.Session;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
++import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.Test;
+diff --git a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java
+index b518abc97..69a3248ca 100644
+--- a/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java
++++ b/sensorhub-service-swe/src/test/java/org/sensorhub/impl/service/sps/TestSPSTService.java
+@@ -21,8 +21,8 @@ import java.util.concurrent.ExecutionException;
+ import java.util.concurrent.Future;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.TimeoutException;
+-import org.eclipse.jetty.websocket.api.WebSocketAdapter;
+-import org.eclipse.jetty.websocket.client.WebSocketClient;
++import org.eclipse.jetty.ee8.websocket.api.WebSocketAdapter;
++import org.eclipse.jetty.ee8.websocket.client.WebSocketClient;
+ import org.junit.After;
+ import org.junit.Before;
+ import org.junit.Test;
+diff --git a/sensorhub-webui-core/build.gradle b/sensorhub-webui-core/build.gradle
+index 073aa2d31..eb67e5a6b 100644
+--- a/sensorhub-webui-core/build.gradle
++++ b/sensorhub-webui-core/build.gradle
+@@ -14,6 +14,10 @@ rootProject.allprojects {
+   }
+ }
+ 
++configurations.configureEach {
++  exclude group: 'javax.servlet', module: 'javax.servlet-api'
++}
++
+ dependencies {
+   implementation project(':sensorhub-core')
+   implementation project(':sensorhub-service-swe')
+@@ -28,6 +32,9 @@ dependencies {
+   embeddedImpl 'com.vaadin:vaadin-compatibility-client-compiled:' + vaadinVersion
+   embeddedImpl 'com.vaadin:vaadin-themes:' + vaadinVersion
+   
++  // force patched jsoup (Vaadin 8.14.3 pulls 1.14.3, CVE-2026-75140)
++  embeddedImpl 'org.jsoup:jsoup:1.23.2'
++  
+   compileOnly 'org.osgi:org.osgi.core:5.0.0'
+   compileOnly 'org.apache.felix:org.apache.felix.bundlerepository:2.0.10'
+ 
+diff --git a/sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java b/sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java
+index 14a9689ff..52c343ed1 100644
+--- a/sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java
++++ b/sensorhub-webui-core/src/main/java/org/sensorhub/ui/AdminUIModule.java
+@@ -21,7 +21,7 @@ import java.util.Map;
  import java.util.logging.LogManager;
  
  import com.vaadin.server.VaadinServlet;
@@ -417,16 +1012,47 @@
  import org.sensorhub.api.comm.CommProviderConfig;
  import org.sensorhub.api.comm.NetworkConfig;
  import org.sensorhub.api.common.SensorHubException;
-@@ -175,7 +175,7 @@
+@@ -56,6 +56,14 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
+     protected static final String SERVLET_PARAM_MODULE = "module_instance";
+     protected static final String WIDGETSET = "widgetset";
+     protected static final int HEARTBEAT_INTERVAL = 10; // in seconds
++    protected static final String ATMOSPHERE_ASYNC_SUPPORT = "org.atmosphere.cpr.asyncSupport";
++    protected static final String SERVLET30_ASYNC_SUPPORT = "org.atmosphere.container.Servlet30CometSupport";
++
++    // strong refs so the JUL config of these loggers is not garbage collected
++    static final java.util.logging.Logger[] PUSH_JUL_LOGGERS = {
++        java.util.logging.Logger.getLogger("org.atmosphere"),
++        java.util.logging.Logger.getLogger("com.vaadin")
++    };
+     
+     VaadinServlet adminUIServlet;
+     VaadinServlet vaaadinResourcesServlet;
+@@ -150,6 +158,9 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
+     {
+         // reset java util logging config so we don't get annoying atmosphere logs
+         LogManager.getLogManager().reset();//.getLogger("org.atmosphere").setLevel(Level.OFF);
++
++        // but still forward Vaadin/Atmosphere warnings and errors (e.g. push init failures) to the OSH log
++        forwardPushWarningsToLog();
+         
+         adminUIServlet = new AdminUIServlet(getSecurityHandler(), getLogger());
+         vaaadinResourcesServlet = new VaadinResourcesServlet(this, getLogger());
+@@ -164,46 +175,63 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
          }
          initParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
          initParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
--        // Atmosphere 2.4.30.vaadin4 auto-detection mistakes Jetty 10 for Jetty 9 and fails to load
 +        // Atmosphere 2.4.30.vaadin4 auto-detection does not support Jetty 10+ (incl. Jetty 12 ee8) and fails to load
-         // org.eclipse.jetty.websocket.servlet.WebSocketCreator; force plain Servlet 3.0 async support
-         initParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
++        // org.eclipse.jetty.websocket.servlet.WebSocketCreator; force plain Servlet 3.0 async support
++        initParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
  
-@@ -190,35 +190,48 @@
+ 
+         initLandingParams.put(SERVLET_PARAM_UI_CLASS, LandingUI.class.getCanonicalName());
+         if (config.widgetSet != null) initLandingParams.put(WIDGETSET, config.widgetSet);
+         initLandingParams.put("productionMode", "true");  // set to false to compile theme on-the-fly
+         initLandingParams.put("heartbeatInterval", Integer.toString(HEARTBEAT_INTERVAL));
++        initLandingParams.put(ATMOSPHERE_ASYNC_SUPPORT, SERVLET30_ASYNC_SUPPORT);
+ 
+         // deploy servlet
          // HACK: we have to disable std err to hide message due to Vaadin duplicate implementation of SL4J
          // Note that this may hide error messages in oth er modules now that startup sequence is multithreaded
          PrintStream oldStdErr = System.err;
@@ -449,19 +1075,6 @@
 -            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 -            landingServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 -            httpServer.addServletSecurity("/*", true);
--
--            var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
--
--            ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
--            errorHandler.addErrorPage(400, "/error/invalid");
--            errorHandler.addErrorPage(403, "/error/forbidden");
--            errorHandler.addErrorPage(404, "/error/notfound");
--
--            server.getServletHandler().setErrorHandler(errorHandler);
--        }
--        else {
--            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
--            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 +        try
 +        {
 +            if (config.enableLandingPage){
@@ -471,22 +1084,31 @@
 +                adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 +                landingServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 +                httpServer.addServletSecurity("/*", true);
-+
+ 
+-            var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
 +                var server = getParentHub().getModuleRegistry().getModuleByType(HttpServer.class);
-+
+ 
+-            ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
+-            errorHandler.addErrorPage(400, "/error/invalid");
+-            errorHandler.addErrorPage(403, "/error/forbidden");
+-            errorHandler.addErrorPage(404, "/error/notfound");
 +                ErrorPageErrorHandler errorHandler = new ErrorPageErrorHandler();
 +                errorHandler.setShowServlet(false);
 +                errorHandler.addErrorPage(400, "/error/invalid");
 +                errorHandler.addErrorPage(403, "/error/forbidden");
 +                errorHandler.addErrorPage(404, "/error/notfound");
-+
+ 
+-            server.getServletHandler().setErrorHandler(errorHandler);
 +                server.getServletHandler().setErrorHandler(errorHandler);
 +            }
 +            else {
 +                httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
 +                adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 +            }
-+        }
+         }
+-        else {
+-            httpServer.deployServlet(adminUIServlet, initParams, "/admin/*", "/VAADIN/*");
+-            adminUIServlet.getServletContext().setAttribute(SERVLET_PARAM_MODULE, this);
 +        finally
 +        {
 +            System.setErr(oldStdErr);
@@ -497,62 +1119,34 @@
  
          // setup security
          httpServer.addServletSecurity("/admin/*", true);
---- ../orig/./sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java	2026-11-02 09:03:58.978544558 -0500
-+++ ./sensorhub-service-consys/src/main/java/org/sensorhub/impl/service/consys/RestApiServlet.java	2026-11-02 09:03:59.037010908 -0500
-@@ -31,7 +31,7 @@
- import javax.servlet.http.HttpServletRequest;
- import javax.servlet.http.HttpServletResponse;
- import org.eclipse.jetty.io.EofException;
--import org.eclipse.jetty.websocket.server.JettyWebSocketServerContainer;
-+import org.eclipse.jetty.ee8.websocket.server.JettyWebSocketServerContainer;
- import org.sensorhub.api.security.IPermission;
- import org.sensorhub.api.security.ISecurityManager;
- import org.sensorhub.impl.service.consys.resource.IResourceHandler;
---- a/sensorhub-core/build.gradle
-+++ b/sensorhub-core/build.gradle
-@@ -9,10 +9,17 @@
-   embeddedApi project(':swe-common-om')
-   embeddedApi project(':sensorml-core')
-   api 'org.osgi:org.osgi.framework:1.10.0'
--  embeddedApi platform('org.eclipse.jetty:jetty-bom:10.0.26')
--  embeddedApi 'org.eclipse.jetty:jetty-servlet'
--  embeddedApi 'org.eclipse.jetty:jetty-servlets'
--  embeddedApi 'org.eclipse.jetty.websocket:websocket-jetty-server'
-+  // Jetty 12.1 with the ee8 environment (keeps javax.servlet API)
-+  // fixes CVE-2026-2332 (jetty-http) and CVE-2026-10050 (jetty-security)
-+  embeddedApi platform('org.eclipse.jetty:jetty-bom:12.1.14')
-+  embeddedApi platform('org.eclipse.jetty.ee8:jetty-ee8-bom:12.1.14')
-+  embeddedApi 'org.eclipse.jetty:jetty-xml'
-+  embeddedApi 'org.eclipse.jetty.ee8:jetty-ee8-servlet'
-+  embeddedApi 'org.eclipse.jetty.ee8:jetty-ee8-servlets'
-+  embeddedApi 'org.eclipse.jetty.ee8.websocket:jetty-ee8-websocket-jetty-server'
-+  // websocket client is provided by core so that only one OSGi bundle exports
-+  // the shared Jetty websocket API packages (used by sensorhub-service-swe and add-ons)
-+  embeddedApi 'org.eclipse.jetty.ee8.websocket:jetty-ee8-websocket-jetty-client'
-   embeddedApi 'javax.validation:validation-api:2.0.1.Final'
-   embeddedApi 'dev.failsafe:failsafe:3.3.2'
-   
---- a/sensorhub-service-swe/build.gradle
-+++ b/sensorhub-service-swe/build.gradle
-@@ -3,7 +3,8 @@
+@@ -213,6 +241,30 @@ public class AdminUIModule extends AbstractHttpServiceModule<AdminUIConfig> impl
+     }
+     
  
- dependencies {
-   implementation project(':sensorhub-core')
--  embeddedApi 'org.eclipse.jetty.websocket:websocket-jetty-client:10.0.26'
-+  // Jetty websocket client is provided by sensorhub-core (embedding it here too
-+  // makes two bundles export the same Jetty packages and breaks OSGi resolution)
- 
-   embeddedApi(project(':ogc-services-sos')) {
-     // exclude from embedded jars, already provided by sensorhub-core
---- a/sensorhub-webui-core/build.gradle
-+++ b/sensorhub-webui-core/build.gradle
-@@ -32,6 +32,9 @@
-   embeddedImpl 'com.vaadin:vaadin-compatibility-client-compiled:' + vaadinVersion
-   embeddedImpl 'com.vaadin:vaadin-themes:' + vaadinVersion
-   
-+  // force patched jsoup (Vaadin 8.14.3 pulls 1.14.3, CVE-2026-75140)
-+  embeddedImpl 'org.jsoup:jsoup:1.23.2'
-+  
-   compileOnly 'org.osgi:org.osgi.core:5.0.0'
-   compileOnly 'org.apache.felix:org.apache.felix.bundlerepository:2.0.10'
- 
++    /*
++     * Forward JUL warnings/errors from Vaadin and Atmosphere to the module logger.
++     * Must be called after LogManager.reset() since reset removes all JUL handlers.
++     */
++    protected void forwardPushWarningsToLog()
++    {
++        final org.slf4j.Logger oshLog = getLogger();
++        final java.util.logging.Formatter formatter = new java.util.logging.SimpleFormatter();
++        java.util.logging.Handler handler = new java.util.logging.Handler() {
++            @Override
++            public void publish(java.util.logging.LogRecord r)
++            {
++                if (isLoggable(r))
++                    oshLog.warn("[{}] {}", r.getLoggerName(), formatter.formatMessage(r), r.getThrown());
++            }
++            @Override public void flush() { }
++            @Override public void close() { }
++        };
++        handler.setLevel(java.util.logging.Level.WARNING);
++        for (var julLogger: PUSH_JUL_LOGGERS)
++            julLogger.addHandler(handler);
++    }
++
++
+     @Override
+     protected void doStop() throws SensorHubException
+     {
