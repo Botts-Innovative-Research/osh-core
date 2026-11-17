@@ -451,6 +451,19 @@ public class HttpServer extends AbstractModule<HttpServerConfig> implements IHtt
             cm.setPathSpec(pathSpec);
             cm.setMethodOmissions(SECURITY_EXCLUDED_METHODS); // disable auth on OPTIONS requests (needed for CORS)
             jettySecurityHandler.addConstraintMapping(cm);
+
+            // explicitly allow excluded methods without auth so they are not
+            // reported by Jetty as 'uncovered HTTP methods'
+            for (String method: SECURITY_EXCLUDED_METHODS)
+            {
+                ServletConstraint openConstraint = new ServletConstraint();
+                openConstraint.setAuthenticate(false);
+                ConstraintMapping openCm = new ConstraintMapping();
+                openCm.setConstraint(openConstraint);
+                openCm.setPathSpec(pathSpec);
+                openCm.setMethod(method);
+                jettySecurityHandler.addConstraintMapping(openCm);
+            }
         }
     }
 
